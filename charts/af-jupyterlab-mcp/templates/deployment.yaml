@@ -12,6 +12,8 @@ spec:
   template:
     metadata:
       annotations:
+        # Restart pods when the rendered pixi manifest changes.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -30,6 +32,30 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      initContainers:
+        - name: pixi-install
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              cp /pixi-config/pixi.toml /workspace/pixi.toml
+              {{- if .Values.jupyterlabMcp.pixiLockContent }}
+              cp /pixi-config/pixi.lock /workspace/pixi.lock
+              {{- end }}
+              pixi install --manifest-path /workspace/pixi.toml
+          volumeMounts:
+            - name: pixi-config
+              mountPath: /pixi-config
+            - name: workspace
+              mountPath: /workspace
+          resources:
+            {{- toYaml .Values.initResources | nindent 12 }}
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -38,9 +64,12 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          command: ["af-jupyterlab-mcp"]
+          command: ["/bin/sh", "-c"]
           args:
-            {{- include "af-jupyterlab-mcp.serveArgs" . | nindent 12 }}
+            - |
+              set -e
+              eval "$(pixi shell-hook --manifest-path /workspace/pixi.toml --shell bash)"
+              exec af-jupyterlab-mcp {{ include "af-jupyterlab-mcp.serveArgs" . }}
           env:
             - name: JUPYTERLAB_MCP_BROKER_URL
               value: {{ .Values.broker.brokerUrl | quote }}
@@ -89,6 +118,22 @@ spec:
             failureThreshold: 3
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+      volumes:
+        - name: pixi-config
+          configMap:
+            name: {{ include "af-jupyterlab-mcp.fullname" . }}-pixi
+            items:
+              - key: pixi.toml
+                path: pixi.toml
+              {{- if .Values.jupyterlabMcp.pixiLockContent }}
+              - key: pixi.lock
+                path: pixi.lock
+              {{- end }}
+        - name: workspace
+          emptyDir: {}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

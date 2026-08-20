@@ -104,7 +104,7 @@ its own argv entry.
     "--host" (.Values.server.host | toString)
     "--port" (.Values.server.port | toString)
     "--audience" .Values.broker.audience
-    "--forwarded-allow-ips" .Values.forwardedAllowIps
+    "--forwarded-allow-ips" (printf "'%s'" .Values.forwardedAllowIps)
     "--log-level" .Values.logLevel -}}
 {{- with .Values.broker.jwksUrl -}}
 {{- $args = append $args "--broker-jwks-url" -}}
@@ -118,7 +118,5 @@ its own argv entry.
 {{- $args = append $args "--resource-url" -}}
 {{- $args = append $args . -}}
 {{- end -}}
-{{- range $args }}
-- {{ . | quote }}
-{{- end -}}
+{{- $args | join " " -}}
 {{- end }}

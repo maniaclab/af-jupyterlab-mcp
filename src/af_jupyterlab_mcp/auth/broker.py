@@ -28,18 +28,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-try:
-    from af_credentials.mcp import mcp_token_verifier
-    from af_credentials.verifier import BrokerTokenVerifier
-
-    HAS_AF_CREDENTIALS = True
-except ImportError:  # pragma: no cover - exercised only without the extra
-    HAS_AF_CREDENTIALS = False
+from af_credentials.mcp import mcp_token_verifier
+from af_credentials.verifier import BrokerTokenVerifier
 
 if TYPE_CHECKING:
     from mcp.server.auth.provider import TokenVerifier
-
-MISSING_AF_CREDENTIALS_MSG = "af-jupyterlab-mcp requires the af-credentials package: pip install af-credentials[mcp]"
 
 
 def extract_bearer(ctx: Any) -> str:
@@ -97,8 +90,6 @@ def make_broker_token_verifier(
     jwks_url: str, issuer: str, audience: str
 ) -> TokenVerifier:
     """Build the mcp SDK TokenVerifier that gates transport-level access."""
-    if not HAS_AF_CREDENTIALS:
-        raise ImportError(MISSING_AF_CREDENTIALS_MSG)
     verifier: TokenVerifier = mcp_token_verifier(
         BrokerTokenVerifier(jwks_url, issuer, audience)
     )
@@ -112,6 +103,4 @@ def make_broker_verifier(jwks_url: str, issuer: str, audience: str) -> Any:
     the SDK and drops POSIX claims; this one is stored in the lifespan
     context and called again per-tool to recover them.
     """
-    if not HAS_AF_CREDENTIALS:
-        raise ImportError(MISSING_AF_CREDENTIALS_MSG)
     return BrokerTokenVerifier(jwks_url, issuer, audience)

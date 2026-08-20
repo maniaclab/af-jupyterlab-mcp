@@ -76,10 +76,12 @@ wire them up out-of-band.
   in-cluster, via the `Service` -- enable only if you need to reach this backend
   directly.
 
-## Divergence from ami-mcp's chart shape
+## Chart shape
 
-ami-mcp's chart installs ami-mcp at pod startup via `pixi install` from a
-conda-forge release (it ships no OCI image). af-jupyterlab-mcp has no published
-package or image yet -- `image.repository`/`image.tag` are placeholders a human
-fills in once the repo exists and CI/CD is set up (see the phase-1 report on
-af-mcp-platform#189 for the exact deferred items).
+Same as ami-mcp's and af-filesystem-mcp's charts: af-jupyterlab-mcp ships no OCI
+image. The chart runs the generic `ghcr.io/prefix-dev/pixi` image and installs
+the `af-jupyterlab-mcp` conda-forge release at pod startup (see the
+`pixi-install` init container in `templates/deployment.yaml`), pinned via
+`jupyterlabMcp.version`. Bumping the app version is a values change (or a
+`tbump` release, which keeps `Chart.yaml`'s `version`/`appVersion` and this
+value in lockstep), not a chart rebuild.

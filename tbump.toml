@@ -51,7 +51,7 @@ search = 'version: {current_version}'
 
 [[file]]
 src = "charts/af-jupyterlab-mcp/values.yaml"
-search = 'tag: "{current_version}"'
+search = 'version: "{current_version}"'
 
 [[field]]
 # the name of the field
