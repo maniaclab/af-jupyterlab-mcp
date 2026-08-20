@@ -40,15 +40,13 @@ def validate_create_request(
     """
     if not CPU_CORES_MIN <= cpu_cores <= CPU_CORES_MAX:
         msg = (
-            f"cpu_cores={cpu_cores} is out of range "
-            f"[{CPU_CORES_MIN}, {CPU_CORES_MAX}]"
+            f"cpu_cores={cpu_cores} is out of range [{CPU_CORES_MIN}, {CPU_CORES_MAX}]"
         )
         raise GuardrailError(msg)
 
     if not MEMORY_GB_MIN <= memory_gb <= MEMORY_GB_MAX:
         msg = (
-            f"memory_gb={memory_gb} is out of range "
-            f"[{MEMORY_GB_MIN}, {MEMORY_GB_MAX}]"
+            f"memory_gb={memory_gb} is out of range [{MEMORY_GB_MIN}, {MEMORY_GB_MAX}]"
         )
         raise GuardrailError(msg)
 
@@ -63,7 +61,10 @@ def validate_create_request(
         msg = f"gpus={gpus} must be >= 0"
         raise GuardrailError(msg)
 
-    if settings.max_gpus_per_request is not None and gpus > settings.max_gpus_per_request:
+    if (
+        settings.max_gpus_per_request is not None
+        and gpus > settings.max_gpus_per_request
+    ):
         msg = (
             f"gpus={gpus} exceeds the configured max_gpus_per_request="
             f"{settings.max_gpus_per_request}"

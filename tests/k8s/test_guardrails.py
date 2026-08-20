@@ -92,9 +92,7 @@ class TestDurationRange:
                 settings=settings,
             )
 
-    def test_hand_crafted_73h_is_rejected_server_side(
-        self, settings: Settings
-    ) -> None:
+    def test_hand_crafted_73h_is_rejected_server_side(self, settings: Settings) -> None:
         """Regression guard for the portal's own gap: the HTML form caps at
         72h client-side only, so a hand-crafted POST can exceed it. jupyterlab-mcp
         must reject server-side regardless of what a client claims."""
