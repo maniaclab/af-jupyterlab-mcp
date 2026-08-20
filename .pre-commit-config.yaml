@@ -20,6 +20,7 @@ repos:
       - id: mixed-line-ending
       - id: name-tests-test
         args: ["--pytest-test-first"]
+        exclude: ^tests/k8s/fakes\.py$
       - id: requirements-txt-fixer
       - id: trailing-whitespace
 
@@ -55,6 +56,7 @@ repos:
     rev: "57b21406f092110c18776e39b0bda50d37c945c8" # frozen: v2.4.3
     hooks:
       - id: codespell
+        args: ["--toml", "pyproject.toml"]
         additional_dependencies:
           - tomli; python_version<'3.11'
 

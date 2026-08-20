@@ -159,6 +159,11 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["T20"]
 
+[tool.codespell]
+# "NotIn" is a real Kubernetes API operator value (nodeAffinity
+# matchExpressions), not a typo for "not in"/"noting"/"notion".
+ignore-words-list = "notin"
+
 [tool.pylint]
 py-version = "3.10"
 ignore-paths = [".*/_version.py"]

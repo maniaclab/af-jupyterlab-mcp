@@ -1,7 +1,7 @@
 # jupyterlab-mcp Helm chart
 
-Deploys jupyterlab-mcp: per-user JupyterLab server management on the ATLAS
-AF Kubernetes cluster, behind the af-mcp-platform credential broker.
+Deploys jupyterlab-mcp: per-user JupyterLab server management on the ATLAS AF
+Kubernetes cluster, behind the af-mcp-platform credential broker.
 
 ## Required values
 
@@ -13,16 +13,15 @@ helm install jupyterlab-mcp charts/jupyterlab-mcp \
   --set notebook.domain=notebooks.af.uchicago.edu
 ```
 
-`broker.brokerUrl` and `notebook.namespace` are required; the chart fails
-the render (`helm template`/`helm install --dry-run`) with a clear message
-if either is missing.
+`broker.brokerUrl` and `notebook.namespace` are required; the chart fails the
+render (`helm template`/`helm install --dry-run`) with a clear message if either
+is missing.
 
 ## Platform wiring (af-mcp-platform)
 
-This chart deploys the backend only. To route the aggregator/broker to it,
-add to af-mcp-platform's `values.yaml` (camelCase, per the shipped
-convention in `docs/auth.md` -- NOT the snake_case in issue #189's original
-body):
+This chart deploys the backend only. To route the aggregator/broker to it, add
+to af-mcp-platform's `values.yaml` (camelCase, per the shipped convention in
+`docs/auth.md` -- NOT the snake_case in issue #189's original body):
 
 ```yaml
 broker:
@@ -51,18 +50,18 @@ here; live platform config changes need a human to apply them).
 
 ## RBAC
 
-- A namespace `Role` + `RoleBinding` in `notebook.namespace` (NOT this
-  release's namespace): pods/services/secrets get+list+create+delete,
-  pods/log get, events list, ingresses get+list+create+delete. The
-  `RoleBinding`'s subject is this release's `ServiceAccount`, which lives in
-  `.Release.Namespace` (typically `mcp`) -- cross-namespace binding is
-  standard Kubernetes RBAC, not a chart trick.
+- A namespace `Role` + `RoleBinding` in `notebook.namespace` (NOT this release's
+  namespace): pods/services/secrets get+list+create+delete, pods/log get, events
+  list, ingresses get+list+create+delete. The `RoleBinding`'s subject is this
+  release's `ServiceAccount`, which lives in `.Release.Namespace` (typically
+  `mcp`) -- cross-namespace binding is standard Kubernetes RBAC, not a chart
+  trick.
 - A read-only `ClusterRole` + `ClusterRoleBinding` (`nodes` get+list, `pods`
   list across all namespaces) for GPU-availability parity with af-portal's
   cluster-wide accounting.
 
-Disable either with `rbac.create=false` / `rbac.clusterRoleCreate=false` if
-you wire them up out-of-band.
+Disable either with `rbac.create=false` / `rbac.clusterRoleCreate=false` if you
+wire them up out-of-band.
 
 ## Values of note
 
@@ -70,18 +69,17 @@ you wire them up out-of-band.
   `create_jupyter_server` enforces server-side. Bumping an image is a values
   change, not a release.
 - `notebook.quotas.maxServersPerUser` / `maxGpusPerRequest`: unset (empty
-  string) by default -- no default quota, per af-mcp-platform#189 decision
-  4. The CPU/memory/duration RANGE guardrails (1-16 cores, 1-256Gi, 1-72h)
-  are NOT configurable here; they are always-enforced validation in the
-  server itself.
-- `ingress.enabled`: `false` by default. The expected caller is the
-  aggregator, in-cluster, via the `Service` -- enable only if you need to
-  reach this backend directly.
+  string) by default -- no default quota, per af-mcp-platform#189 decision 4.
+  The CPU/memory/duration RANGE guardrails (1-16 cores, 1-256Gi, 1-72h) are NOT
+  configurable here; they are always-enforced validation in the server itself.
+- `ingress.enabled`: `false` by default. The expected caller is the aggregator,
+  in-cluster, via the `Service` -- enable only if you need to reach this backend
+  directly.
 
 ## Divergence from ami-mcp's chart shape
 
 ami-mcp's chart installs ami-mcp at pod startup via `pixi install` from a
-conda-forge release (it ships no OCI image). jupyterlab-mcp has no
-published package or image yet -- `image.repository`/`image.tag` are
-placeholders a human fills in once the repo exists and CI/CD is set up (see
-the phase-1 report on af-mcp-platform#189 for the exact deferred items).
+conda-forge release (it ships no OCI image). jupyterlab-mcp has no published
+package or image yet -- `image.repository`/`image.tag` are placeholders a human
+fills in once the repo exists and CI/CD is set up (see the phase-1 report on
+af-mcp-platform#189 for the exact deferred items).
