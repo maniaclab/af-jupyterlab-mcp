@@ -1,0 +1,176 @@
+[build-system]
+requires = ["hatchling>=1.26", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jupyterlab-mcp"
+authors = [
+  { name = "Giordon Stark", email = "kratsg@gmail.com" },
+]
+description = "MCP Server for per-user JupyterLab server management on the ATLAS AF Kubernetes cluster"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+classifiers = [
+  "Development Status :: 1 - Planning",
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Scientific/Engineering",
+  "Typing :: Typed",
+]
+dynamic = ["version"]
+dependencies = [
+  "mcp>=2.0.0,<3",
+  "kubernetes>=30",
+  "jinja2>=3.1",
+  "pyyaml>=6",
+  "af-credentials[mcp]>=0.1.1",
+]
+
+[project.scripts]
+jupyterlab-mcp = "jupyterlab_mcp.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/maniaclab/jupyterlab-mcp"
+"Bug Tracker" = "https://github.com/maniaclab/jupyterlab-mcp/issues"
+
+[dependency-groups]
+test = [
+  "pytest >=9",
+  "pytest-cov >=7",
+  "pytest-asyncio >=0.24",
+  "httpx >=0.27",
+  "pyjwt >=2.8",
+]
+dev = [
+  { include-group = "test" },
+]
+
+[tool.hatch]
+version.source = "vcs"
+build.hooks.vcs.version-file = "src/jupyterlab_mcp/_version.py"
+
+[tool.hatch.envs.default]
+dependency-groups = ["dev"]
+
+[tool.hatch.envs.hatch-test]
+dependency-groups = ["test"]
+env-vars.PYTHONWARNDEFAULTENCODING = "1"
+
+[tool.pytest]
+minversion = "9.0"
+addopts = ["-ra", "--showlocals", "--strict-markers", "--strict-config"]
+strict = true
+filterwarnings = [
+  "error",
+]
+log_level = "INFO"
+testpaths = [
+  "tests",
+]
+markers = [
+    "slow: marks tests as slow (skipped by default, use --runslow to run)",
+]
+asyncio_mode = "auto"
+
+[tool.coverage]
+run.source = ["jupyterlab_mcp"]
+report.exclude_also = [
+  '\.\.\.',
+  'if typing.TYPE_CHECKING:',
+]
+
+[tool.mypy]
+files = ["src", "tests"]
+python_version = "3.10"
+warn_unused_configs = true
+strict = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+warn_unreachable = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+
+[[tool.mypy.overrides]]
+module = "jupyterlab_mcp.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[[tool.mypy.overrides]]
+module = ["kubernetes.*", "af_credentials.*"]
+ignore_missing_imports = true
+
+[tool.ruff]
+show-fixes = true
+
+[tool.ruff.lint]
+extend-select = [
+  "ARG",
+  "B",
+  "BLE",
+  "C4",
+  "DTZ",
+  "EM",
+  "EXE",
+  "FA",
+  "FLY",
+  "FURB",
+  "G",
+  "I",
+  "ICN",
+  "ISC",
+  "LOG",
+  "NPY",
+  "PD",
+  "PERF",
+  "PGH",
+  "PIE",
+  "PL",
+  "PT",
+  "PTH",
+  "PYI",
+  "Q",
+  "RET",
+  "RSE",
+  "RUF",
+  "SIM",
+  "SLOT",
+  "T10",
+  "T20",
+  "TC",
+  "TRY",
+  "UP",
+  "YTT",
+]
+ignore = [
+  "PLR09",
+  "PLR2004",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["T20"]
+
+[tool.pylint]
+py-version = "3.10"
+ignore-paths = [".*/_version.py"]
+reports.output-format = "colorized"
+similarities.ignore-imports = "yes"
+messages_control.disable = [
+  "broad-exception-caught",
+  "design",
+  "duplicate-code",
+  "fixme",
+  "line-too-long",
+  "missing-module-docstring",
+  "missing-function-docstring",
+  "wrong-import-position",
+]

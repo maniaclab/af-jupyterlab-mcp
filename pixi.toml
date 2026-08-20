@@ -1,0 +1,101 @@
+[workspace]
+authors = ["Giordon Stark <kratsg@gmail.com>"]
+name = "jupyterlab-mcp"
+channels = ["conda-forge"]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
+preview = ["pixi-build"]
+
+[dependencies]
+jupyterlab-mcp = { path = "./" }
+setuptools = "*"
+af-credentials = ">=0.1.1"
+
+[package]
+name = "jupyterlab-mcp"
+version = "latest"
+
+[package.build]
+backend = { name = "pixi-build-python", version = "*" }
+config = { noarch = true }
+
+[package.host-dependencies]
+python = ">=3.10"
+uv = "*"
+hatchling = ">=1.25"
+hatch-vcs = ">=0.4"
+
+[package.run-dependencies]
+mcp = ">=2.0.0,<3"
+kubernetes = ">=30"
+jinja2 = ">=3.1"
+pyyaml = ">=6"
+
+[feature.py310.dependencies]
+python = "<3.11,>=3.10"
+
+[feature.py311.dependencies]
+python = "<3.12,>=3.11"
+
+[feature.py312.dependencies]
+python = "<3.13,>=3.12"
+
+[feature.py313.dependencies]
+python = "<3.14,>=3.13"
+
+[feature.py314.dependencies]
+python = "<3.15,>=3.14"
+
+[feature.test.dependencies]
+pytest = ">=9"
+pytest-cov = ">=3"
+pytest-asyncio = ">=0.24"
+httpx = "*"
+pyjwt = ">=2.8"
+
+[feature.test.tasks]
+test = { cmd = "pytest -m 'not slow'", description = "Run quick tests (skip slow)" }
+test-cov = { cmd = "pytest -m 'not slow' --cov=jupyterlab_mcp --cov-report=term --cov-report=html", description = "Run quick tests with coverage" }
+test-slow = { cmd = "pytest --runslow", description = "Run tests including slow tests" }
+test-all = { cmd = "pytest --cov=jupyterlab_mcp", description = "Run all tests with coverage" }
+
+[feature.helm.dependencies]
+kubernetes-helm = "*"
+
+[feature.helm.tasks]
+helm-lint = { cmd = """
+helm lint charts/jupyterlab-mcp --set ingress.domain=notebooks.af.uchicago.edu --set broker.brokerUrl=https://broker.example.com \
+&& helm template shared charts/jupyterlab-mcp --set ingress.domain=notebooks.af.uchicago.edu --set broker.brokerUrl=https://broker.example.com > /dev/null
+""", description = "Lint the jupyterlab-mcp Helm chart and smoke-render it" }
+helm-template = { cmd = "helm template a charts/jupyterlab-mcp --set ingress.domain=notebooks.af.uchicago.edu --set broker.brokerUrl=https://broker.example.com", description = "Render the chart with default values" }
+
+[feature.dev.dependencies]
+pre-commit = "*"
+identify = ">=1.4.20"
+pylint = ">=3.2"
+mypy = "*"
+ruff = "*"
+python-build = "*"
+twine = "*"
+
+[feature.dev.tasks]
+pre-commit = { cmd = "pre-commit run --all-files", description = "Run pre-commit hooks on all files" }
+pylint = { cmd = "pylint jupyterlab_mcp", description = "Run PyLint on jupyterlab-mcp package" }
+pre-commit-install = { cmd = "pre-commit install", description = "Install pre-commit git hooks" }
+pre-commit-update = { cmd = "pre-commit autoupdate", description = "Update pre-commit hook versions" }
+build-clean = { cmd = "rm -rf build dist", description = "Clean build artifacts" }
+build = { cmd = "python -m build", depends-on = ["build-clean"], description = "Build SDist and wheel distributions", outputs = ["dist"] }
+build-check = { cmd = "twine check --strict ./dist/*", depends-on = ["build"], description = "Run twine to check" }
+
+[environments]
+dev = ["dev"]
+helm = { features = ["helm"], no-default-feature = true }
+py310 = ["test", "py310"]
+py311 = ["test", "py311"]
+py312 = ["test", "py312"]
+py313 = ["test", "py313"]
+py314 = ["test", "py314"]
+
+[tasks]
+lint = { depends-on = ["pre-commit", "pylint"], description = "Run all linting (pre-commit + pylint)" }
+check = { depends-on = ["lint", "test"], description = "Quick check: lint + basic tests" }
+check-all = { depends-on = ["lint", "test-all"], description = "Comprehensive check: lint + all tests" }
