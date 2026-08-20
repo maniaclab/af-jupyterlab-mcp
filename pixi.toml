@@ -63,10 +63,10 @@ kubernetes-helm = "*"
 
 [feature.helm.tasks]
 helm-lint = { cmd = """
-helm lint charts/jupyterlab-mcp --set ingress.domain=notebooks.af.uchicago.edu --set broker.brokerUrl=https://broker.example.com \
-&& helm template shared charts/jupyterlab-mcp --set ingress.domain=notebooks.af.uchicago.edu --set broker.brokerUrl=https://broker.example.com > /dev/null
+helm lint charts/jupyterlab-mcp --set notebook.domain=notebooks.af.uchicago.edu --set broker.brokerUrl=https://broker.example.com \
+&& helm template shared charts/jupyterlab-mcp --set notebook.domain=notebooks.af.uchicago.edu --set broker.brokerUrl=https://broker.example.com > /dev/null
 """, description = "Lint the jupyterlab-mcp Helm chart and smoke-render it" }
-helm-template = { cmd = "helm template a charts/jupyterlab-mcp --set ingress.domain=notebooks.af.uchicago.edu --set broker.brokerUrl=https://broker.example.com", description = "Render the chart with default values" }
+helm-template = { cmd = "helm template a charts/jupyterlab-mcp --set notebook.domain=notebooks.af.uchicago.edu --set broker.brokerUrl=https://broker.example.com", description = "Render the chart with default values" }
 
 [feature.dev.dependencies]
 pre-commit = "*"
