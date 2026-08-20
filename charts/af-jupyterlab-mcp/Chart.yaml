@@ -6,10 +6,10 @@ description: |
   cluster, served over HTTP transport behind the AF credential broker.
 type: application
 # Chart version, kept in lockstep with appVersion by tbump.toml.
-version: 0.1.0
+version: 0.1.1
 # af-jupyterlab-mcp release the chart deploys by default (the image tag
 # pinned in values.yaml). Override with image.tag in values.
-appVersion: "0.1.0"
+appVersion: "0.1.1"
 keywords:
   - jupyterlab
   - mcp
