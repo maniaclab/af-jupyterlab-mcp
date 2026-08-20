@@ -22,20 +22,20 @@ UChicago ATLAS Analysis Facility cluster — the same notebooks
 - `get_gpu_availability`
 - `list_supported_images`
 
-Unlike ami-mcp (which exposes a query DSL and lets the LLM be expressive),
-there is no raw-k8s-manifest escape hatch here: the value is the AF-specific
-policy layered on top (guardrail validation, dual-writer safety with
-af-portal, owner-scoping via the broker-issued JWT's `unixname`), not a thin
-pass-through to the Kubernetes API.
+Unlike ami-mcp (which exposes a query DSL and lets the LLM be expressive), there
+is no raw-k8s-manifest escape hatch here: the value is the AF-specific policy
+layered on top (guardrail validation, dual-writer safety with af-portal,
+owner-scoping via the broker-issued JWT's `unixname`), not a thin pass-through
+to the Kubernetes API.
 
 The Helm chart (`charts/af-jupyterlab-mcp/`) runs the generic
-`ghcr.io/prefix-dev/pixi` image rather than a published af-jupyterlab-mcp
-image: an initContainer installs the pinned `jupyterlabMcp.version` from
-conda-forge into `/workspace` via `pixi install --manifest-path
-/workspace/pixi.toml` against a ConfigMap-rendered `pixi.toml` (and, when
+`ghcr.io/prefix-dev/pixi` image rather than a published af-jupyterlab-mcp image:
+an initContainer installs the pinned `jupyterlabMcp.version` from conda-forge
+into `/workspace` via `pixi install --manifest-path /workspace/pixi.toml`
+against a ConfigMap-rendered `pixi.toml` (and, when
 `jupyterlabMcp.pixiLockContent` is set, a frozen `pixi.lock` for reproducible
-installs), and the main container activates that environment with `pixi
-shell-hook` before starting the server — the same pattern `ami-mcp` and
+installs), and the main container activates that environment with
+`pixi shell-hook` before starting the server — the same pattern `ami-mcp` and
 `af-filesystem-mcp` use.
 
 ## Development setup
