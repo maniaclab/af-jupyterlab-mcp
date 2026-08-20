@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from jupyterlab_mcp.config import Settings
-from jupyterlab_mcp.k8s.errors import GuardrailError, ImageNotAllowedError
-from jupyterlab_mcp.k8s.guardrails import compute_limits, validate_create_request
+from af_jupyterlab_mcp.config import Settings
+from af_jupyterlab_mcp.k8s.errors import GuardrailError, ImageNotAllowedError
+from af_jupyterlab_mcp.k8s.guardrails import compute_limits, validate_create_request
 
 _ALLOWED_IMAGE = "hub.opensciencegrid.org/usatlas/ml-platform-cpu:latest"
 
@@ -94,7 +94,7 @@ class TestDurationRange:
 
     def test_hand_crafted_73h_is_rejected_server_side(self, settings: Settings) -> None:
         """Regression guard for the portal's own gap: the HTML form caps at
-        72h client-side only, so a hand-crafted POST can exceed it. jupyterlab-mcp
+        72h client-side only, so a hand-crafted POST can exceed it. af-jupyterlab-mcp
         must reject server-side regardless of what a client claims."""
         with pytest.raises(GuardrailError):
             validate_create_request(

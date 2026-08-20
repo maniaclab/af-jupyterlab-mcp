@@ -11,4 +11,4 @@ dist/
 htmlcov/
 .venv/
 .pixi/
-src/jupyterlab_mcp/_version.py
+src/af_jupyterlab_mcp/_version.py

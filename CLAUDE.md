@@ -1,4 +1,4 @@
-# jupyterlab-mcp — Contributor Guide
+# af-jupyterlab-mcp — Contributor Guide
 
 MCP server that lets AF users create, inspect, and delete their own per-user
 JupyterLab servers on the UChicago ATLAS Analysis Facility Kubernetes cluster —
@@ -8,7 +8,7 @@ today — exposed as tools for LLMs, behind the af-mcp-platform credential broke
 ## Architecture
 
 ```
-LLM <--MCP/HTTP--> af-mcp-platform aggregator <--Bearer: broker JWT--> jupyterlab-mcp <--k8s API--> notebook namespace
+LLM <--MCP/HTTP--> af-mcp-platform aggregator <--Bearer: broker JWT--> af-jupyterlab-mcp <--k8s API--> notebook namespace
 ```
 
 **Design philosophy**: unlike ami-mcp (which exposes a query DSL and lets the
@@ -28,8 +28,8 @@ user's own notebook without the notebook token ever entering LLM context.
 ## Project layout
 
 ```
-src/jupyterlab_mcp/
-├── cli.py               # argparse: `jupyterlab-mcp serve` (HTTP transport only)
+src/af_jupyterlab_mcp/
+├── cli.py               # argparse: `af-jupyterlab-mcp serve` (HTTP transport only)
 ├── config.py             # env-driven Settings + the server-side guardrail constants
 ├── server.py             # FastMCP setup, lifespan (k8s client + broker verifier), tool registration
 ├── auth/
@@ -96,9 +96,9 @@ pixi run build          # build sdist + wheel
 ## Auth: broker-issued JWTs only
 
 Unlike ami-mcp (which supports both a shared-secret mode and a broker mode),
-jupyterlab-mcp is AF-native and broker-only: `af-credentials` is a **hard**
+af-jupyterlab-mcp is AF-native and broker-only: `af-credentials` is a **hard**
 dependency, not an optional extra, and there is no non-broker way to run this
-server. See `src/jupyterlab_mcp/auth/broker.py`'s module docstring for the
+server. See `src/af_jupyterlab_mcp/auth/broker.py`'s module docstring for the
 two-verification-per-request shape (the SDK's `token_verifier=` drops POSIX
 claims; `get_broker_claims` re-verifies via the same
 `BrokerTokenVerifier.verify(token)` to recover `unixname`/`uid`).
@@ -107,7 +107,7 @@ claims; `get_broker_claims` re-verifies via the same
 `auth/broker.py` and `server.py` — keep the token-verification surface in one
 place.
 
-## Dual-writer safety (af-portal AND jupyterlab-mcp both create notebooks)
+## Dual-writer safety (af-portal AND af-jupyterlab-mcp both create notebooks)
 
 - K8s object names are the lock: `sanitize_k8s_pod_name` +
   `notebook_name_available` (ported from af-portal, kept name-for-name identical
@@ -126,7 +126,7 @@ The four templates in `k8s/templates/*.yaml.j2` are a verbatim port of
 af-portal's `portal/templates/jupyterlab/{pod,service,secret,ingress}.yaml`,
 with exactly two deliberate divergences (nothing else):
 
-1. every object gets a `created-by: jupyterlab-mcp` label (audit only; the
+1. every object gets a `created-by: af-jupyterlab-mcp` label (audit only; the
    portal ignores labels it does not recognize).
 2. the pod's `globus-id` label is **omitted** — broker JWTs carry no Globus ID.
    This is af-mcp-platform issue #189's open question 2, deliberately left open,
@@ -135,7 +135,7 @@ with exactly two deliberate divergences (nothing else):
 Do not add, remove, or rename any other field without checking whether
 af-portal's reaper thread (`start_notebook_maintenance`, which selects on
 `k8s-app=jupyterlab` and reads `time2delete`) still recognizes the object —
-jupyterlab-mcp deliberately runs no reaper of its own (decision 2 in issue
+af-jupyterlab-mcp deliberately runs no reaper of its own (decision 2 in issue
 #189): af-portal's Flask reaper thread is the sole TTL reaper for both writers'
 pods.
 
@@ -151,7 +151,7 @@ known gap, filed separately), and this backend must not repeat that mistake.
 
 ## RBAC
 
-Two distinct grants, both templated in `charts/jupyterlab-mcp/templates/`:
+Two distinct grants, both templated in `charts/af-jupyterlab-mcp/templates/`:
 
 - A namespace `Role` + cross-namespace `RoleBinding` in the notebook namespace
   (pods/services/secrets get+list+create+delete, pods/log get, events list,

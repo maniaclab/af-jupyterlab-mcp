@@ -3,7 +3,7 @@ requires = ["hatchling>=1.26", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
-name = "jupyterlab-mcp"
+name = "af-jupyterlab-mcp"
 authors = [
   { name = "Giordon Stark", email = "kratsg@gmail.com" },
 ]
@@ -38,11 +38,11 @@ dependencies = [
 ]
 
 [project.scripts]
-jupyterlab-mcp = "jupyterlab_mcp.cli:main"
+af-jupyterlab-mcp = "af_jupyterlab_mcp.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/maniaclab/jupyterlab-mcp"
-"Bug Tracker" = "https://github.com/maniaclab/jupyterlab-mcp/issues"
+Homepage = "https://github.com/maniaclab/af-jupyterlab-mcp"
+"Bug Tracker" = "https://github.com/maniaclab/af-jupyterlab-mcp/issues"
 
 [dependency-groups]
 test = [
@@ -58,7 +58,7 @@ dev = [
 
 [tool.hatch]
 version.source = "vcs"
-build.hooks.vcs.version-file = "src/jupyterlab_mcp/_version.py"
+build.hooks.vcs.version-file = "src/af_jupyterlab_mcp/_version.py"
 
 [tool.hatch.envs.default]
 dependency-groups = ["dev"]
@@ -84,7 +84,7 @@ markers = [
 asyncio_mode = "auto"
 
 [tool.coverage]
-run.source = ["jupyterlab_mcp"]
+run.source = ["af_jupyterlab_mcp"]
 report.exclude_also = [
   '\.\.\.',
   'if typing.TYPE_CHECKING:',
@@ -101,7 +101,7 @@ disallow_untyped_defs = false
 disallow_incomplete_defs = false
 
 [[tool.mypy.overrides]]
-module = "jupyterlab_mcp.*"
+module = "af_jupyterlab_mcp.*"
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 

@@ -1,0 +1,25 @@
+{{/*
+Cross-namespace bind: this RoleBinding lives in the notebook namespace (same
+namespace as the Role it references -- Kubernetes requires that), but its
+subject is the ServiceAccount created in THIS release's namespace (normally
+`mcp`, alongside the other af-mcp-platform backends). That asymmetry is how
+cross-namespace RBAC works: a RoleBinding's subjects may name a
+ServiceAccount in any namespace.
+*/}}
+{{- if .Values.rbac.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "af-jupyterlab-mcp.fullname" . }}-notebooks
+  namespace: {{ .Values.notebook.namespace }}
+  labels:
+    {{- include "af-jupyterlab-mcp.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "af-jupyterlab-mcp.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ include "af-jupyterlab-mcp.fullname" . }}-notebooks
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

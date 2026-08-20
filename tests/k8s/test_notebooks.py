@@ -13,14 +13,14 @@ import base64
 import pytest
 from kubernetes.client.exceptions import ApiException
 
-from jupyterlab_mcp.config import Settings
-from jupyterlab_mcp.k8s.errors import (
+from af_jupyterlab_mcp.config import Settings
+from af_jupyterlab_mcp.k8s.errors import (
     GuardrailError,
     NameConflictError,
     NotFoundOrNotYoursError,
     QuotaExceededError,
 )
-from jupyterlab_mcp.k8s.notebooks import (
+from af_jupyterlab_mcp.k8s.notebooks import (
     K8sClients,
     create_notebook,
     delete_notebook,

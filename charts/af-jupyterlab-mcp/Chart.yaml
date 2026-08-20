@@ -1,0 +1,20 @@
+apiVersion: v2
+name: af-jupyterlab-mcp
+description: |
+  MCP server exposing per-user JupyterLab server management (create/list/get/
+  delete, GPU availability, supported images) on the ATLAS AF Kubernetes
+  cluster, served over HTTP transport behind the AF credential broker.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - jupyterlab
+  - mcp
+  - atlas
+  - kubernetes
+home: https://github.com/maniaclab/af-jupyterlab-mcp
+sources:
+  - https://github.com/maniaclab/af-jupyterlab-mcp
+maintainers:
+  - name: Giordon Stark
+    email: kratsg@gmail.com

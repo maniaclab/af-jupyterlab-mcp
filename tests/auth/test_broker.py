@@ -1,6 +1,6 @@
 """Tests for broker-issued JWT bearer extraction and claims retrieval.
 
-jupyterlab-mcp's owner-scoping is only as strong as this module: every tool
+af-jupyterlab-mcp's owner-scoping is only as strong as this module: every tool
 gets ``claims.unixname`` from here, never from a caller-supplied argument.
 These tests exercise ``extract_bearer`` and ``get_broker_claims`` against a
 duck-typed fake verifier matching the real
@@ -20,7 +20,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from jupyterlab_mcp.auth.broker import extract_bearer, get_broker_claims
+from af_jupyterlab_mcp.auth.broker import extract_bearer, get_broker_claims
 
 
 def _make_ctx(headers: dict[str, str]) -> MagicMock:

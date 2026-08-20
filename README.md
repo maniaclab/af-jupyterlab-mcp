@@ -1,4 +1,4 @@
-# jupyterlab-mcp
+# af-jupyterlab-mcp
 
 MCP server that lets AF users create, inspect, and delete their own per-user
 JupyterLab servers on the UChicago ATLAS Analysis Facility Kubernetes cluster —
@@ -8,7 +8,7 @@ today, exposed as tools for LLMs.
 ## Architecture
 
 ```
-LLM <--MCP/HTTP--> jupyterlab-mcp <--k8s API--> notebook namespace (Pod/Service/Secret/Ingress)
+LLM <--MCP/HTTP--> af-jupyterlab-mcp <--k8s API--> notebook namespace (Pod/Service/Secret/Ingress)
                          ^
                          | Authorization: Bearer <broker-issued JWT>
                          |
@@ -25,8 +25,8 @@ the notebook itself — see
 ## Project layout
 
 ```
-src/jupyterlab_mcp/
-├── cli.py               # argparse: `jupyterlab-mcp serve` (HTTP only)
+src/af_jupyterlab_mcp/
+├── cli.py               # argparse: `af-jupyterlab-mcp serve` (HTTP only)
 ├── config.py            # env-driven Settings: namespace, domain, image allowlist, quotas
 ├── server.py            # FastMCP setup, lifespan (k8s client + broker verifier), tool registration
 ├── auth/

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from jupyterlab_mcp.k8s.gpu import get_gpu_availability
-from jupyterlab_mcp.k8s.notebooks import K8sClients
+from af_jupyterlab_mcp.k8s.gpu import get_gpu_availability
+from af_jupyterlab_mcp.k8s.notebooks import K8sClients
 
 from .fakes import FakeCoreV1Api, FakeNetworkingV1Api, make_gpu_pod, make_node
 

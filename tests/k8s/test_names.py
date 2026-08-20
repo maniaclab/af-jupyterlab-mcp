@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from jupyterlab_mcp.k8s.names import (
+from af_jupyterlab_mcp.k8s.names import (
     generate_notebook_name,
     notebook_name_available,
     sanitize_k8s_pod_name,

@@ -1,4 +1,4 @@
-"""A faked ``kubernetes`` client for jupyterlab-mcp's unit tests.
+"""A faked ``kubernetes`` client for af-jupyterlab-mcp's unit tests.
 
 Real end-to-end verification against a live cluster is explicitly out of
 scope for this test suite (no cluster access); this fake implements just
@@ -216,7 +216,7 @@ class _Obj:
 
 
 def _pod_from_manifest(manifest: dict[str, Any]) -> Any:
-    """Build a pod object with the attribute shape jupyterlab_mcp.k8s.notebooks expects."""
+    """Build a pod object with the attribute shape af_jupyterlab_mcp.k8s.notebooks expects."""
     md = manifest["metadata"]
     spec = manifest["spec"]
     container = spec["containers"][0]

@@ -1,14 +1,14 @@
 """Tests for the ported Jinja templates and the two deliberate divergences.
 
 Divergences from af-portal's templates (issue #189):
-  1. add a `created-by: jupyterlab-mcp` label
+  1. add a `created-by: af-jupyterlab-mcp` label
   2. omit `globus-id` (broker JWTs carry no Globus ID -- see issue #189
      open question 2, flagged, not silently resolved, in the final report)
 """
 
 from __future__ import annotations
 
-from jupyterlab_mcp.k8s.templates import render_manifests
+from af_jupyterlab_mcp.k8s.templates import render_manifests
 
 _SETTINGS = {
     "notebook_id": "kratsg-notebook-1",
@@ -49,9 +49,9 @@ class TestRenderManifests:
     def test_created_by_label_added_to_all_four(self) -> None:
         manifests = render_manifests(**_SETTINGS)
         for kind, manifest in manifests.items():
-            assert manifest["metadata"]["labels"]["created-by"] == "jupyterlab-mcp", (
-                f"{kind} is missing the created-by divergence label"
-            )
+            assert (
+                manifest["metadata"]["labels"]["created-by"] == "af-jupyterlab-mcp"
+            ), f"{kind} is missing the created-by divergence label"
 
     def test_globus_id_label_omitted_from_pod(self) -> None:
         manifests = render_manifests(**_SETTINGS)

@@ -2,7 +2,7 @@
 
 Unlike ami-mcp (where broker mode is an optional extra and its transport
 tests skip via ``pytest.importorskip("af_credentials")`` when it is not
-installed), jupyterlab-mcp has af-credentials as a hard dependency -- its
+installed), af-jupyterlab-mcp has af-credentials as a hard dependency -- its
 only auth mode is broker-issued -- so these tests always run.
 """
 
@@ -15,8 +15,8 @@ import kubernetes.config as k8s_config
 import pytest
 from starlette.testclient import TestClient
 
-from jupyterlab_mcp.config import Settings
-from jupyterlab_mcp.server import _make_broker_app, serve
+from af_jupyterlab_mcp.config import Settings
+from af_jupyterlab_mcp.server import _make_broker_app, serve
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -67,7 +67,7 @@ class TestBrokerModeApp:
         app = _make_broker_app(
             jwks_url="http://broker.invalid/.well-known/jwks.json",
             issuer="http://broker.invalid",
-            audience="jupyterlab-mcp",
+            audience="af-jupyterlab-mcp",
             resource_url="http://127.0.0.1:8000",
             host="127.0.0.1",
             settings=Settings(),

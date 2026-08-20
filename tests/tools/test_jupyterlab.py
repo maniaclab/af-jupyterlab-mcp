@@ -1,4 +1,4 @@
-"""Tests for the six registered jupyterlab-mcp tools end-to-end (fake k8s + fake broker claims)."""
+"""Tests for the six registered af-jupyterlab-mcp tools end-to-end (fake k8s + fake broker claims)."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from unittest.mock import MagicMock
 import pytest
 from mcp.server.mcpserver import MCPServer
 
-from jupyterlab_mcp.config import Settings
-from jupyterlab_mcp.k8s.notebooks import K8sClients
-from jupyterlab_mcp.tools.jupyterlab import register
+from af_jupyterlab_mcp.config import Settings
+from af_jupyterlab_mcp.k8s.notebooks import K8sClients
+from af_jupyterlab_mcp.tools.jupyterlab import register
 from tests.k8s.fakes import FakeCoreV1Api, FakeNetworkingV1Api
 
 if TYPE_CHECKING:
