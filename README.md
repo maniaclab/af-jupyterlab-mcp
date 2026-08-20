@@ -1,9 +1,14 @@
 # af-jupyterlab-mcp
 
+<!-- --8<-- [start:intro] -->
+
 MCP server that lets AF users create, inspect, and delete their own per-user
 JupyterLab servers on the UChicago ATLAS Analysis Facility Kubernetes cluster —
 the same notebooks [af-portal](https://github.com/maniaclab/af-portal) deploys
 today, exposed as tools for LLMs.
+<!-- --8<-- [end:intro] -->
+
+<!-- --8<-- [start:architecture] -->
 
 ## Architecture
 
@@ -21,6 +26,7 @@ Secret/Ingress quadruple for a notebook, ported from af-portal's
 built) adds a typed proxy to the Datalayer `jupyter-mcp-server` running inside
 the notebook itself — see
 [maniaclab/af-mcp-platform#189](https://github.com/maniaclab/af-mcp-platform/issues/189).
+<!-- --8<-- [end:architecture] -->
 
 ## Project layout
 
@@ -44,6 +50,8 @@ src/af_jupyterlab_mcp/
     └── jupyterlab.py     # the six @mcp.tool() functions
 ```
 
+<!-- --8<-- [start:tool-surface] -->
+
 ## Tool surface
 
 - `create_jupyter_server`
@@ -55,6 +63,7 @@ src/af_jupyterlab_mcp/
 
 The owner of every server is always `claims.unixname` from the verified broker
 JWT — no tool takes an owner/username argument.
+<!-- --8<-- [end:tool-surface] -->
 
 ## Build and test commands
 

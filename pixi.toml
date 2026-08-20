@@ -68,6 +68,18 @@ helm lint charts/af-jupyterlab-mcp --set notebook.domain=notebooks.af.uchicago.e
 """, description = "Lint the af-jupyterlab-mcp Helm chart and smoke-render it" }
 helm-template = { cmd = "helm template a charts/af-jupyterlab-mcp --set notebook.domain=notebooks.af.uchicago.edu --set broker.brokerUrl=https://broker.example.com", description = "Render the chart with default values" }
 
+[feature.docs.dependencies]
+zensical = "*"
+lychee = "*"
+pydocstyle = "*"
+
+[feature.docs.tasks]
+docs-build = { cmd = "zensical build", description = "Build documentation (static)", inputs = ["src/", "docs/", "zensical.toml"], outputs = ["site"] }
+docs-linkcheck = { cmd = "lychee docs/", description = "Check documentation for broken links" }
+docs-serve = { cmd = "zensical serve", depends-on = ["docs-build"], description = "Build and serve documentation" }
+docs-clean = { cmd = "rm -rf site", description = "Clean documentation build artifacts", inputs = ["site"] }
+check-docstrings = { cmd = "pydocstyle --add-ignore=D104,D105,D107 src/af_jupyterlab_mcp/", description = "Check docstring style" }
+
 [feature.dev.dependencies]
 pre-commit = "*"
 identify = ">=1.4.20"
@@ -87,6 +99,7 @@ build = { cmd = "python -m build", depends-on = ["build-clean"], description = "
 build-check = { cmd = "twine check --strict ./dist/*", depends-on = ["build"], description = "Run twine to check" }
 
 [environments]
+docs = ["docs"]
 dev = ["dev"]
 helm = { features = ["helm"], no-default-feature = true }
 py310 = ["test", "py310"]
