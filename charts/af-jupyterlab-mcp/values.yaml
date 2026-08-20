@@ -13,7 +13,7 @@ imagePullSecrets: []
 # -- af-jupyterlab-mcp release pinned into the rendered pixi.toml at /workspace.
 jupyterlabMcp:
   # Conda-forge version of af-jupyterlab-mcp to install (==<version>).
-  version: "0.1.1"
+  version: "0.1.2"
   # Extra conda-forge dependencies merged into the rendered pixi.toml, as a
   # name -> version-spec map.
   extraPixiDependencies: {}
