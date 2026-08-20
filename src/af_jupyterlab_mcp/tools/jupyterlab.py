@@ -13,6 +13,8 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
+from mcp.server.mcpserver import Context  # noqa: TC002
+
 from af_jupyterlab_mcp.auth.broker import get_broker_claims
 from af_jupyterlab_mcp.config import DURATION_HOURS_DEFAULT
 from af_jupyterlab_mcp.k8s import gpu as gpu_mod
@@ -53,7 +55,7 @@ def register(mcp: MCPServer) -> None:
         gpu_product: str | None = None,
         duration_hours: int = DURATION_HOURS_DEFAULT,
         *,
-        ctx: Any,
+        ctx: Context[Any, Any],
     ) -> str:
         """Create a per-user JupyterLab server (pod+service+secret+ingress).
 
@@ -102,7 +104,7 @@ def register(mcp: MCPServer) -> None:
             return format_error(exc)
 
     @mcp.tool()
-    async def list_jupyter_servers(*, ctx: Any) -> str:
+    async def list_jupyter_servers(*, ctx: Context[Any, Any]) -> str:
         """List the caller's own JupyterLab servers. Never includes tokenized URLs."""
         try:
             verifier, clients, settings = _lifespan(ctx)
@@ -123,7 +125,7 @@ def register(mcp: MCPServer) -> None:
         include_url: bool = False,
         include_log: bool = False,
         *,
-        ctx: Any,
+        ctx: Context[Any, Any],
     ) -> str:
         """Get rich status for one of the caller's own JupyterLab servers.
 
@@ -154,7 +156,7 @@ def register(mcp: MCPServer) -> None:
             return format_error(exc)
 
     @mcp.tool()
-    async def delete_jupyter_server(name: str, *, ctx: Any) -> str:
+    async def delete_jupyter_server(name: str, *, ctx: Context[Any, Any]) -> str:
         """Delete one of the caller's own JupyterLab servers (all four objects).
 
         The try/except/else split (rather than a trailing return inside the
@@ -182,7 +184,9 @@ def register(mcp: MCPServer) -> None:
             return f"Deleted JupyterLab server {name!r}."
 
     @mcp.tool()
-    async def get_gpu_availability(gpu_product: str | None = None, *, ctx: Any) -> str:
+    async def get_gpu_availability(
+        gpu_product: str | None = None, *, ctx: Context[Any, Any]
+    ) -> str:
         """Get cluster-wide GPU availability, optionally filtered by product."""
         try:
             _verifier, clients, _settings = _lifespan(ctx)
@@ -204,7 +208,7 @@ def register(mcp: MCPServer) -> None:
             return format_error(exc)
 
     @mcp.tool()
-    async def list_supported_images(*, ctx: Any) -> str:
+    async def list_supported_images(*, ctx: Context[Any, Any]) -> str:
         """List the CPU and GPU images allowed by create_jupyter_server, from chart values."""
         try:
             _verifier, _clients, settings = _lifespan(ctx)

@@ -69,6 +69,37 @@ def _make_ctx(
     return ctx
 
 
+class TestContextInjection:
+    """Verify that ctx is injected by FastMCP, not exposed as a user-facing arg."""
+
+    def test_ctx_not_in_tool_parameters(self) -> None:
+        """ctx must NOT appear in any tool's parameter schema.
+
+        If ctx is annotated as Any instead of Context, FastMCP treats it as a
+        regular user argument, not an injected dependency. The MCP client then
+        passes {"ctx": {}} and the server receives a plain dict, causing
+        'dict' object has no attribute 'request_context'.
+        """
+        mcp = MCPServer("test")
+        register(mcp)
+        for tool in mcp._tool_manager.list_tools():
+            params = tool.parameters.get("properties", {})
+            assert "ctx" not in params, (
+                f"Tool '{tool.name}' exposes 'ctx' as a user-facing parameter. "
+                "Annotate it as 'ctx: Context[Any, Any]' so FastMCP injects it."
+            )
+
+    def test_ctx_kwarg_recognized_by_fastmcp(self) -> None:
+        """FastMCP must set context_kwarg='ctx' for every tool."""
+        mcp = MCPServer("test")
+        register(mcp)
+        for tool in mcp._tool_manager.list_tools():
+            assert tool.context_kwarg == "ctx", (
+                f"Tool '{tool.name}' has context_kwarg={tool.context_kwarg!r}; "
+                "expected 'ctx'. Annotate ctx as Context[Any, Any]."
+            )
+
+
 class TestCreateJupyterServer:
     async def test_creates_and_reports_id(
         self,
