@@ -51,7 +51,7 @@ def clients() -> K8sClients:
 
 
 class TestCreateNotebookHappyPath:
-    def test_creates_three_objects(
+    def test_creates_four_objects(
         self, clients: K8sClients, settings: Settings
     ) -> None:
         info = create_notebook(
@@ -72,6 +72,7 @@ class TestCreateNotebookHappyPath:
         assert clients.core_v1.created_order == [
             "pod/kratsg-notebook-1",
             "service/kratsg-notebook-1",
+            "secret/kratsg-notebook-1",
             "ingress/kratsg-notebook-1",
         ]
 
@@ -93,6 +94,30 @@ class TestCreateNotebookHappyPath:
         )
         assert "token" not in info
         assert "url" not in info
+
+    def test_secret_token_matches_pod_env_token(
+        self, clients: K8sClients, settings: Settings
+    ) -> None:
+        """af-portal reads the token back via read_namespaced_secret, never
+        the pod env var -- the two must agree or af-portal's browser URL
+        for this notebook is built from a token that doesn't work."""
+        create_notebook(
+            clients,
+            settings=settings,
+            owner="kratsg",
+            owner_uid=12345,
+            name=None,
+            image=_IMAGE,
+            cpu_cores=1,
+            memory_gb=1,
+            gpus=0,
+            gpu_product=None,
+            duration_hours=8,
+        )
+        pod = clients.core_v1.pods[("jupyterlab", "kratsg-notebook-1")]
+        env_map = {e.name: e.value for e in pod.spec.containers[0].env}
+        secret = clients.core_v1.secrets[("jupyterlab", "kratsg-notebook-1")]
+        assert secret["data"]["token"] == env_map["JUPYTER_TOKEN"]
 
     def test_explicit_name_is_sanitized(
         self, clients: K8sClients, settings: Settings
@@ -202,7 +227,33 @@ class TestCreateNotebookRollbackOn409:
         assert ("jupyterlab", "racer") not in clients.core_v1.pods
         assert clients.core_v1.deleted_order == ["pod/racer"]
 
-    def test_409_on_ingress_rolls_back_pod_and_service(
+    def test_409_on_secret_rolls_back_pod_and_service(
+        self, clients: K8sClients, settings: Settings
+    ) -> None:
+        def _boom(*_a: object, **_k: object) -> None:
+            raise ApiException(status=409, reason="AlreadyExists")
+
+        clients.core_v1.create_namespaced_secret = _boom
+
+        with pytest.raises(NameConflictError):
+            create_notebook(
+                clients,
+                settings=settings,
+                owner="kratsg",
+                owner_uid=1,
+                name="racer2",
+                image=_IMAGE,
+                cpu_cores=1,
+                memory_gb=1,
+                gpus=0,
+                gpu_product=None,
+                duration_hours=8,
+            )
+        assert ("jupyterlab", "racer2") not in clients.core_v1.pods
+        assert ("jupyterlab", "racer2") not in clients.core_v1.services
+        assert clients.core_v1.deleted_order == ["service/racer2", "pod/racer2"]
+
+    def test_409_on_ingress_rolls_back_pod_service_and_secret(
         self, clients: K8sClients, settings: Settings
     ) -> None:
         def _boom(*_a: object, **_k: object) -> None:
@@ -226,7 +277,9 @@ class TestCreateNotebookRollbackOn409:
             )
         assert ("jupyterlab", "racer3") not in clients.core_v1.pods
         assert ("jupyterlab", "racer3") not in clients.core_v1.services
+        assert ("jupyterlab", "racer3") not in clients.core_v1.secrets
         assert clients.core_v1.deleted_order == [
+            "secret/racer3",
             "service/racer3",
             "pod/racer3",
         ]
@@ -532,6 +585,7 @@ class TestDeleteNotebookOwnerScoping:
         delete_notebook(clients, settings=settings, name="mine", owner="kratsg")
         assert ("jupyterlab", "mine") not in clients.core_v1.pods
         assert ("jupyterlab", "mine") not in clients.core_v1.services
+        assert ("jupyterlab", "mine") not in clients.core_v1.secrets
         assert ("jupyterlab", "mine") not in clients.networking_v1.ingresses
 
     def test_other_user_cannot_delete_notebook(

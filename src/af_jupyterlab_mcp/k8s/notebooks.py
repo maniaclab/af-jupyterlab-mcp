@@ -5,10 +5,10 @@ from af-portal's ``portal/jupyterlab.py``, ``kubernetes==...`` client. Two
 behaviors are intentionally NOT ported, per af-mcp-platform issue #189:
 
 - No patch-on-409 fallback. The portal silently adopts a same-named
-  service/ingress on a 409, which is fine for the portal's own re-deploys
-  but wrong for a second, independent writer: here a 409 on ANY of the
-  three creates is a hard error, and whatever was already created in that
-  call is rolled back (``_rollback``).
+  service/secret/ingress on a 409, which is fine for the portal's own
+  re-deploys but wrong for a second, independent writer: here a 409 on ANY
+  of the four creates is a hard error, and whatever was already created in
+  that call is rolled back (``_rollback``).
 - Owner-scoping is enforced everywhere a pod is looked up by name
   (``get_notebook``, ``delete_notebook``): a caller who is not the pod's
   ``owner`` label gets the same error as a nonexistent pod
@@ -96,6 +96,8 @@ def _rollback(
                 clients.core_v1.delete_namespaced_pod(name, namespace)
             elif kind == "service":
                 clients.core_v1.delete_namespaced_service(name, namespace)
+            elif kind == "secret":
+                clients.core_v1.delete_namespaced_secret(name, namespace)
             elif kind == "ingress":
                 clients.networking_v1.delete_namespaced_ingress(name, namespace)
         except ApiException:  # noqa: PERF203 -- best-effort rollback; a delete failing (e.g. already gone) must not mask the original 409
@@ -105,10 +107,11 @@ def _rollback(
 def get_notebook_token(pod: Any) -> str:
     """Read JUPYTER_TOKEN from pod env.
 
-    The token is stored directly in the pod's JUPYTER_TOKEN env var (no
-    separate Secret). Raises ValueError if the var is absent or empty, so
-    callers can surface a clear error rather than silently calling a notebook
-    without a token.
+    This backend reads the token from the pod's JUPYTER_TOKEN env var, not
+    the per-notebook Secret (that Secret is written for af-portal's benefit
+    only -- see ``create_notebook``). Raises ValueError if the var is absent
+    or empty, so callers can surface a clear error rather than silently
+    calling a notebook without a token.
     """
     env_map: dict[str, str] = {e.name: e.value for e in pod.spec.containers[0].env}
     token = env_map.get("JUPYTER_TOKEN")
@@ -132,14 +135,19 @@ def create_notebook(
     gpu_product: str | None,
     duration_hours: int,
 ) -> dict[str, Any]:
-    """Create the pod+service+ingress triple for one notebook.
+    """Create the pod+service+secret+ingress quadruple for one notebook.
 
     ``owner``/``owner_uid`` must come from verified broker JWT claims, never
-    from caller-supplied arguments (enforced by the tool layer). The token
-    is stored only in the pod's JUPYTER_TOKEN env var (no separate Secret).
-    Returns a dict describing the created notebook -- deliberately never the
-    token or a tokenized URL (see ``get_jupyter_server(include_url=True)``
-    for that).
+    from caller-supplied arguments (enforced by the tool layer). The token is
+    written to both the pod's JUPYTER_TOKEN env var and a per-notebook
+    Secret. This backend's own ``get_jupyter_server(include_url=True)`` reads
+    the pod env var, never the Secret -- the Secret exists solely because
+    af-portal (the other writer in the dual-writer contract) builds its own
+    browser-viewable notebook URL via ``read_namespaced_secret``, never the
+    pod env var, and 404s (silently, on the portal side) if the Secret is
+    missing. Returns a dict describing the created notebook -- deliberately
+    never the token or a tokenized URL (see
+    ``get_jupyter_server(include_url=True)`` for that).
 
     Raises:
         GuardrailError / ImageNotAllowedError: a server-side guardrail failed.
@@ -217,6 +225,10 @@ def create_notebook(
             namespace=settings.notebook_namespace, body=manifests["service"]
         )
         created.append("service")
+        clients.core_v1.create_namespaced_secret(
+            namespace=settings.notebook_namespace, body=manifests["secret"]
+        )
+        created.append("secret")
         clients.networking_v1.create_namespaced_ingress(
             namespace=settings.notebook_namespace, body=manifests["ingress"]
         )
@@ -348,8 +360,9 @@ def _build_notebook_info(
         notebook["log"] = log
 
     if include_url and pod.metadata.deletion_timestamp is None:
-        # The token is stored directly in the pod's JUPYTER_TOKEN env var
-        # (no separate Secret -- the pod spec is the single source of truth).
+        # Read from the pod env var, not the per-notebook Secret (that
+        # Secret is written for af-portal's benefit only -- see
+        # create_notebook).
         env_map = {e.name: e.value for e in pod.spec.containers[0].env}
         token = env_map["JUPYTER_TOKEN"]
         query = urllib.parse.urlencode({"token": token})
@@ -414,7 +427,7 @@ def list_notebooks(
 def delete_notebook(
     clients: K8sClients, *, settings: Settings, name: str, owner: str
 ) -> None:
-    """Delete the pod+service+ingress triple, refusing non-owners.
+    """Delete the pod+service+secret+ingress quadruple, refusing non-owners.
 
     Raises:
         NotFoundOrNotYoursError: same not-found-or-not-yours refusal as
@@ -429,4 +442,5 @@ def delete_notebook(
     namespace = settings.notebook_namespace
     clients.core_v1.delete_namespaced_pod(notebook_id, namespace)
     clients.core_v1.delete_namespaced_service(notebook_id, namespace)
+    clients.core_v1.delete_namespaced_secret(notebook_id, namespace)
     clients.networking_v1.delete_namespaced_ingress(notebook_id, namespace)

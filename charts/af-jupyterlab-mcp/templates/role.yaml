@@ -6,9 +6,12 @@ One honest caveat (af-mcp-platform#189):
   RBAC cannot scope by label selector -- the owner= label check is
   application-level (see af_jupyterlab_mcp.k8s.notebooks), not enforced here.
 
-No `secrets` grant is needed: the JupyterLab token is stored only in the
-pod's JUPYTER_TOKEN env var and read back directly from the pod spec on
-get_jupyter_server(include_url=True) -- no Secret object is created or read.
+The `secrets` grant is create+delete only: this backend writes a
+per-notebook Secret solely so af-portal (the other writer in the
+dual-writer contract) can build its own browser-viewable notebook URL --
+this backend's own get_jupyter_server(include_url=True) reads the token
+back from the pod spec, never the Secret, so no `get`/`list` verb is
+needed here.
 */}}
 {{- if .Values.rbac.create -}}
 apiVersion: rbac.authorization.k8s.io/v1
@@ -24,6 +27,9 @@ rules:
     verbs: ["get", "list", "create", "delete"]
   - apiGroups: [""]
     resources: ["services"]
+    verbs: ["create", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
     verbs: ["create", "delete"]
   - apiGroups: [""]
     resources: ["pods/log"]

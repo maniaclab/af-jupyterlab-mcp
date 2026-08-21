@@ -64,6 +64,7 @@ class FakeCoreV1Api:
 
     pods: dict[tuple[str, str], Any] = field(default_factory=dict)
     services: dict[tuple[str, str], Any] = field(default_factory=dict)
+    secrets: dict[tuple[str, str], Any] = field(default_factory=dict)
     nodes: dict[str, Any] = field(default_factory=dict)
     events: dict[str, list[Any]] = field(default_factory=dict)
     pod_logs: dict[tuple[str, str], str] = field(default_factory=dict)
@@ -87,6 +88,14 @@ class FakeCoreV1Api:
         self.services[(namespace, name)] = copy.deepcopy(body)
         self.created_order.append(f"service/{name}")
         return self.services[(namespace, name)]
+
+    def create_namespaced_secret(self, namespace: str, body: Any) -> Any:
+        name = body["metadata"]["name"]
+        if name in self.conflict_on_create:
+            raise ApiException(status=409, reason="AlreadyExists")
+        self.secrets[(namespace, name)] = copy.deepcopy(body)
+        self.created_order.append(f"secret/{name}")
+        return self.secrets[(namespace, name)]
 
     def read_namespaced_pod(self, name: str, namespace: str) -> Any:
         try:
@@ -156,6 +165,10 @@ class FakeCoreV1Api:
     def delete_namespaced_service(self, name: str, namespace: str) -> None:
         self.services.pop((namespace, name), None)
         self.deleted_order.append(f"service/{name}")
+
+    def delete_namespaced_secret(self, name: str, namespace: str) -> None:
+        self.secrets.pop((namespace, name), None)
+        self.deleted_order.append(f"secret/{name}")
 
 
 @dataclass
