@@ -110,7 +110,7 @@ def get_notebook_token(pod: Any) -> str:
     callers can surface a clear error rather than silently calling a notebook
     without a token.
     """
-    env_map = {e.name: e.value for e in pod.spec.containers[0].env}
+    env_map: dict[str, str] = {e.name: e.value for e in pod.spec.containers[0].env}
     token = env_map.get("JUPYTER_TOKEN")
     if not token:
         msg = f"JUPYTER_TOKEN not found in pod {pod.metadata.name} env"

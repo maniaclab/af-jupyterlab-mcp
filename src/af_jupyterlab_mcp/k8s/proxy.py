@@ -7,19 +7,12 @@ token server-side via the MCP client transport, calls the upstream tool, and
 returns the formatted result.
 
 The token is injected as a query parameter (`?token=<JUPYTER_TOKEN>`) in the
-MCP endpoint URL, which is how JupyterLab's IdentityProvider authenticates
-requests. The MCP SDK's `streamable_http_client` (which uses `httpx2`
-internally) handles the protocol handshake (initialize + tools/call).
-
-TODO(#4): confirm whether jupyter-mcp-server authenticates via `?token=`
-query param or via `Authorization: Bearer <token>` header. The current
-implementation uses the query param form, which matches how the JupyterLab
-portal constructs notebook URLs. If bearer is needed instead, replace
-`?token=` with an `httpx2.AsyncClient(headers={"Authorization": f"Bearer {token}"})`
-injected into `streamable_http_client`.
-
-TODO(#4): jupyter-mcp-server uses `stateless_http=True` per the subagent
-research. Each request is independent; no session persistence is needed.
+MCP endpoint URL. jupyter-mcp-server accepts both `?token=` and
+`Authorization: Bearer`; the query-param form is used here because it matches
+how the JupyterLab portal constructs notebook URLs. The MCP SDK's
+`streamable_http_client` (which uses `httpx2` internally) handles the protocol
+handshake (initialize + tools/call). jupyter-mcp-server runs with
+`stateless_http=True`, so each request is independent.
 """
 
 from __future__ import annotations
@@ -37,13 +30,13 @@ async def call_notebook_tool(
     notebook_url: str,
     token: str,
     tool_name: str,
-    tool_args: dict,
+    tool_args: dict[str, object],
 ) -> str:
     """Call a tool on the notebook's jupyter-mcp-server and return formatted output.
 
     The token is injected into the upstream MCP URL server-side and is never
-    returned to the caller. `tool_name` is the upstream tool name (e.g.
-    `"execute_code"`, `"notebook_get-selected-cell"` with hyphens preserved).
+    returned to the caller. `tool_name` is the upstream tool name exactly as
+    jupyter-mcp-server registers it (e.g. `"execute_code"`).
 
     Returns a plain string: the text content of the first tool result on
     success, or a formatted ``**Error**: ...`` string on failure (transport
@@ -71,7 +64,7 @@ async def call_notebook_tool(
     texts = [c.text for c in result.content if hasattr(c, "text")]
     output = "\n".join(texts) if texts else "(no output)"
 
-    if result.isError:
+    if result.is_error:
         return format_error(Exception(output))
 
     return output

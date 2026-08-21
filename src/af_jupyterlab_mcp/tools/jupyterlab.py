@@ -82,9 +82,13 @@ def register(mcp: MCPServer) -> None:
                 duration_hours=duration_hours,
             )
             output = format_notebook(info)
-            hints = [f"Use `get_jupyter_server(name={info['id']!r})` to check readiness."]
+            hints = [
+                f"Use `get_jupyter_server(name={info['id']!r})` to check readiness."
+            ]
             if settings.portal_url:
-                hints.append(f"Visit {settings.portal_url} in your browser to access the notebook.")
+                hints.append(
+                    f"Visit {settings.portal_url} in your browser to access the notebook."
+                )
             return append_next_actions(output, hints)
         except (GuardrailError, QuotaExceededError, NameConflictError) as exc:
             return format_error(

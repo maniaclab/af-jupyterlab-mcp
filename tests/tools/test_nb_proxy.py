@@ -111,12 +111,19 @@ class TestNbProxyContextInjection:
                 f"Tool '{tool.name}' exposes 'ctx' as a user-facing parameter."
             )
 
-    def test_all_18_tools_are_registered(self) -> None:
-        """Exactly 18 nb_* tools must be registered."""
+    def test_all_16_tools_are_registered(self) -> None:
+        """Exactly 16 nb_* tools must be registered.
+
+        nb_get_selected_cell and nb_run_all_cells are excluded because they
+        require the jupyter-mcp-tools JupyterLab extension which is not
+        installed in the current notebook images.
+        """
         mcp = MCPServer("test")
         nb_proxy_mod.register(mcp)
         names = [t.name for t in mcp._tool_manager.list_tools()]
-        assert len(names) == 18, f"Expected 18 tools, got {len(names)}: {names}"
+        assert len(names) == 16, f"Expected 16 tools, got {len(names)}: {names}"
+        assert "nb_get_selected_cell" not in names
+        assert "nb_run_all_cells" not in names
 
     def test_notebook_server_id_is_required_parameter(self) -> None:
         """notebook_server_id must be a required parameter of every nb_* tool."""
@@ -160,7 +167,9 @@ class TestNbListKernels:
         """When pod is Pending (no Ready condition), a clear error with hint is returned."""
         ctx, _ = _make_base_ctx(settings=settings)
         jtools = _jlab_tools_dict()
-        await jtools["create_jupyter_server"](image=_IMAGE, name="alice-notebook-1", ctx=ctx)
+        await jtools["create_jupyter_server"](
+            image=_IMAGE, name="alice-notebook-1", ctx=ctx
+        )
         # Default fake pod has no Ready condition (status.conditions=[])
         with patch("af_jupyterlab_mcp.tools.nb_proxy.call_notebook_tool"):
             result = await registered_nb_tools["nb_list_kernels"](
@@ -177,12 +186,16 @@ class TestNbListKernels:
         """nb_list_kernels forwards to upstream list_kernels with no extra args when pod is Ready."""
         ctx, core = _make_base_ctx(settings=settings)
         jtools = _jlab_tools_dict()
-        await jtools["create_jupyter_server"](image=_IMAGE, name="alice-notebook-1", ctx=ctx)
+        await jtools["create_jupyter_server"](
+            image=_IMAGE, name="alice-notebook-1", ctx=ctx
+        )
 
         # Mark pod Ready
         pod = core.pods[("jupyterlab", "alice-notebook-1")]
         pod.status.conditions = [MagicMock(type="Ready", status="True")]
-        core.pod_logs[("jupyterlab", "alice-notebook-1")] = "Jupyter Server 2.x is running at"
+        core.pod_logs[("jupyterlab", "alice-notebook-1")] = (
+            "Jupyter Server 2.x is running at"
+        )
 
         with patch(
             "af_jupyterlab_mcp.tools.nb_proxy.call_notebook_tool",
@@ -213,11 +226,15 @@ class TestNbExecuteCode:
         """nb_execute_code forwards code and optional args to upstream execute_code."""
         ctx, core = _make_base_ctx(settings=settings)
         jtools = _jlab_tools_dict()
-        await jtools["create_jupyter_server"](image=_IMAGE, name="alice-notebook-1", ctx=ctx)
+        await jtools["create_jupyter_server"](
+            image=_IMAGE, name="alice-notebook-1", ctx=ctx
+        )
 
         pod = core.pods[("jupyterlab", "alice-notebook-1")]
         pod.status.conditions = [MagicMock(type="Ready", status="True")]
-        core.pod_logs[("jupyterlab", "alice-notebook-1")] = "Jupyter Server 2.x is running at"
+        core.pod_logs[("jupyterlab", "alice-notebook-1")] = (
+            "Jupyter Server 2.x is running at"
+        )
 
         with patch(
             "af_jupyterlab_mcp.tools.nb_proxy.call_notebook_tool",
@@ -244,11 +261,15 @@ class TestNbExecuteCode:
         """The JUPYTER_TOKEN must not appear in nb_execute_code output."""
         ctx, core = _make_base_ctx(settings=settings)
         jtools = _jlab_tools_dict()
-        await jtools["create_jupyter_server"](image=_IMAGE, name="alice-notebook-1", ctx=ctx)
+        await jtools["create_jupyter_server"](
+            image=_IMAGE, name="alice-notebook-1", ctx=ctx
+        )
 
         pod = core.pods[("jupyterlab", "alice-notebook-1")]
         pod.status.conditions = [MagicMock(type="Ready", status="True")]
-        core.pod_logs[("jupyterlab", "alice-notebook-1")] = "Jupyter Server 2.x is running at"
+        core.pod_logs[("jupyterlab", "alice-notebook-1")] = (
+            "Jupyter Server 2.x is running at"
+        )
 
         real_token = get_notebook_token(pod)
 
@@ -263,35 +284,3 @@ class TestNbExecuteCode:
             )
 
         assert real_token not in result
-
-
-# ---------------------------------------------------------------------------
-# Tests: hyphenated upstream name (nb_get_selected_cell)
-# ---------------------------------------------------------------------------
-
-
-class TestNbGetSelectedCell:
-    async def test_passes_hyphenated_tool_name_to_upstream(
-        self,
-        registered_nb_tools: dict[str, Callable[..., Awaitable[str]]],
-        settings: Settings,
-    ) -> None:
-        """nb_get_selected_cell passes 'notebook_get-selected-cell' (with hyphen) upstream."""
-        ctx, core = _make_base_ctx(settings=settings)
-        jtools = _jlab_tools_dict()
-        await jtools["create_jupyter_server"](image=_IMAGE, name="alice-notebook-1", ctx=ctx)
-
-        pod = core.pods[("jupyterlab", "alice-notebook-1")]
-        pod.status.conditions = [MagicMock(type="Ready", status="True")]
-        core.pod_logs[("jupyterlab", "alice-notebook-1")] = "Jupyter Server 2.x is running at"
-
-        with patch(
-            "af_jupyterlab_mcp.tools.nb_proxy.call_notebook_tool",
-            new=AsyncMock(return_value="cell info"),
-        ) as mock_call:
-            await registered_nb_tools["nb_get_selected_cell"](
-                notebook_server_id="alice-notebook-1", ctx=ctx
-            )
-
-        kwargs = mock_call.call_args.kwargs
-        assert kwargs["tool_name"] == "notebook_get-selected-cell"

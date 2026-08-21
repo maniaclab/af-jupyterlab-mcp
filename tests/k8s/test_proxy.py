@@ -45,9 +45,7 @@ def _make_pod_no_token() -> Any:
     """Return a pod-like object with no JUPYTER_TOKEN in env."""
     return _Obj(
         metadata=_Obj(name="nb-alice-1"),
-        spec=_Obj(
-            containers=[_Obj(env=[_Obj(name="OTHER_VAR", value="other")])]
-        ),
+        spec=_Obj(containers=[_Obj(env=[_Obj(name="OTHER_VAR", value="other")])]),
     )
 
 
@@ -108,7 +106,10 @@ class TestCallNotebookTool:
 
         with (
             patch("af_jupyterlab_mcp.k8s.proxy.streamable_http_client", fake_transport),
-            patch("af_jupyterlab_mcp.k8s.proxy.ClientSession", return_value=fake_session_ctx()),
+            patch(
+                "af_jupyterlab_mcp.k8s.proxy.ClientSession",
+                return_value=fake_session_ctx(),
+            ),
         ):
             result = await call_notebook_tool(
                 notebook_url="https://nb-alice-1.notebooks.af.uchicago.edu",
@@ -139,7 +140,10 @@ class TestCallNotebookTool:
 
         with (
             patch("af_jupyterlab_mcp.k8s.proxy.streamable_http_client", fake_transport),
-            patch("af_jupyterlab_mcp.k8s.proxy.ClientSession", return_value=fake_session_ctx()),
+            patch(
+                "af_jupyterlab_mcp.k8s.proxy.ClientSession",
+                return_value=fake_session_ctx(),
+            ),
         ):
             await call_notebook_tool(
                 notebook_url="https://nb-alice-1.notebooks.af.uchicago.edu",
@@ -154,13 +158,15 @@ class TestCallNotebookTool:
 
     async def test_passes_correct_tool_name_and_args(self) -> None:
         """The upstream tool_name and tool_args are forwarded verbatim."""
-        captured_calls: list[tuple[str, dict]] = []
+        captured_calls: list[tuple[str, dict[str, object]]] = []
         mock_result = _make_tool_result("result")
 
         mock_session = AsyncMock()
         mock_session.initialize = AsyncMock()
 
-        async def fake_call_tool(name: str, arguments: dict | None = None, **_kwargs: Any) -> Any:
+        async def fake_call_tool(
+            name: str, arguments: dict[str, object] | None = None, **_kwargs: Any
+        ) -> Any:
             captured_calls.append((name, arguments or {}))
             return mock_result
 
@@ -176,7 +182,10 @@ class TestCallNotebookTool:
 
         with (
             patch("af_jupyterlab_mcp.k8s.proxy.streamable_http_client", fake_transport),
-            patch("af_jupyterlab_mcp.k8s.proxy.ClientSession", return_value=fake_session_ctx()),
+            patch(
+                "af_jupyterlab_mcp.k8s.proxy.ClientSession",
+                return_value=fake_session_ctx(),
+            ),
         ):
             await call_notebook_tool(
                 notebook_url="https://nb-alice-1.notebooks.af.uchicago.edu",
@@ -205,7 +214,10 @@ class TestCallNotebookTool:
 
         with (
             patch("af_jupyterlab_mcp.k8s.proxy.streamable_http_client", fake_transport),
-            patch("af_jupyterlab_mcp.k8s.proxy.ClientSession", return_value=fake_session_ctx()),
+            patch(
+                "af_jupyterlab_mcp.k8s.proxy.ClientSession",
+                return_value=fake_session_ctx(),
+            ),
         ):
             result = await call_notebook_tool(
                 notebook_url="https://nb-alice-1.notebooks.af.uchicago.edu",
@@ -235,7 +247,10 @@ class TestCallNotebookTool:
         secret = "super-secret-token-xyz"
         with (
             patch("af_jupyterlab_mcp.k8s.proxy.streamable_http_client", fake_transport),
-            patch("af_jupyterlab_mcp.k8s.proxy.ClientSession", return_value=fake_session_ctx()),
+            patch(
+                "af_jupyterlab_mcp.k8s.proxy.ClientSession",
+                return_value=fake_session_ctx(),
+            ),
         ):
             result = await call_notebook_tool(
                 notebook_url="https://nb-alice-1.notebooks.af.uchicago.edu",

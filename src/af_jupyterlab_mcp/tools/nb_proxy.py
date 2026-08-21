@@ -10,19 +10,14 @@ Each tool here mirrors one tool from jupyter-mcp-server
 5. Calls the upstream jupyter-mcp-server tool via ``call_notebook_tool``,
    which injects the token server-side.
 
-Hyphens in upstream tool names (e.g. ``notebook_get-selected-cell``) are
-normalised to underscores in the Python/MCP tool name (``nb_get_selected_cell``)
-but the *original* hyphenated name is passed to ``call_notebook_tool`` so the
-upstream server receives the name it expects.
-
 Tool signatures are copied from jupyter-mcp-server v1.x source; see
 https://github.com/datalayer/jupyter-mcp-server/tree/main/jupyter_mcp_server/tools
 
-TODO(#4): ``notebook_get-selected-cell`` and ``notebook_run-all-cells`` are
-served by the ``jupyter-mcp-tools`` JupyterLab extension (not the core
-jupyter-mcp-server package). Their parameter schemas are only known at runtime
-from the running JupyterLab instance. The proxy tools below stub them with no
-extra parameters and forward whatever args are supplied.
+Not included: ``notebook_get-selected-cell`` and ``notebook_run-all-cells``.
+These are served by the ``jupyter-mcp-tools`` JupyterLab frontend extension,
+which is not installed in the current notebook images. They will be added here
+once ``jupyter-mcp-tools`` is available in the image (cross-reference:
+maniaclab/ml_platform issue TBD).
 """
 
 from __future__ import annotations
@@ -80,9 +75,7 @@ async def _get_ready_pod_and_token(
             hints=["Use `list_jupyter_servers` to see your own servers."],
         )
 
-    ready = any(
-        c.type == "Ready" and c.status == "True" for c in pod.status.conditions
-    )
+    ready = any(c.type == "Ready" and c.status == "True" for c in pod.status.conditions)
     if not ready:
         return format_error(
             Exception(f"Notebook {notebook_server_id!r} is not yet Ready"),
@@ -101,8 +94,7 @@ async def _get_ready_pod_and_token(
 
 
 def register(mcp: MCPServer) -> None:
-    """Register the 18 nb_* proxy tools on *mcp*."""
-
+    """Register the 16 nb_* proxy tools on *mcp*."""
     # ------------------------------------------------------------------
     # Filesystem
     # ------------------------------------------------------------------
@@ -559,55 +551,8 @@ def register(mcp: MCPServer) -> None:
             tool_args=args,
         )
 
-    # ------------------------------------------------------------------
-    # JupyterLab extension tools (jupyter-mcp-tools)
-    # Parameters below are stubbed; exact schemas are only known at runtime.
-    # TODO(#4): fetch live tool schemas from the running JupyterLab instance
-    # once jupyter-mcp-tools publishes a stable schema.
-    # ------------------------------------------------------------------
-
-    @mcp.tool()
-    async def nb_get_selected_cell(
-        notebook_server_id: str,
-        *,
-        ctx: Context[Any, Any],
-    ) -> str:
-        """Get the currently selected cell in the active JupyterLab notebook.
-
-        Served by the jupyter-mcp-tools JupyterLab extension. Parameters are
-        resolved at runtime from the live instance.
-        """
-        result = await _get_ready_pod_and_token(ctx, notebook_server_id)
-        if isinstance(result, str):
-            return result
-        _pod, token = result
-        _, _, settings = _lifespan(ctx)
-        return await call_notebook_tool(
-            notebook_url=f"https://{notebook_server_id}.{settings.domain}",
-            token=token,
-            tool_name="notebook_get-selected-cell",
-            tool_args={},
-        )
-
-    @mcp.tool()
-    async def nb_run_all_cells(
-        notebook_server_id: str,
-        *,
-        ctx: Context[Any, Any],
-    ) -> str:
-        """Run all cells in the active JupyterLab notebook.
-
-        Served by the jupyter-mcp-tools JupyterLab extension. Parameters are
-        resolved at runtime from the live instance.
-        """
-        result = await _get_ready_pod_and_token(ctx, notebook_server_id)
-        if isinstance(result, str):
-            return result
-        _pod, token = result
-        _, _, settings = _lifespan(ctx)
-        return await call_notebook_tool(
-            notebook_url=f"https://{notebook_server_id}.{settings.domain}",
-            token=token,
-            tool_name="notebook_run-all-cells",
-            tool_args={},
-        )
+    # nb_get_selected_cell and nb_run_all_cells are intentionally absent.
+    # They are served by the ``jupyter-mcp-tools`` JupyterLab frontend extension,
+    # which is not installed in the current notebook images. They will be added
+    # here once ``jupyter-mcp-tools`` is available in the image (cross-reference:
+    # maniaclab/ml_platform issue TBD).
