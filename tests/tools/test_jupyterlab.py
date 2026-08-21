@@ -245,6 +245,113 @@ class TestDeleteJupyterServer:
         assert ("jupyterlab", "mine") in clients.core_v1.pods
 
 
+class TestListJupyterServersPortalUrl:
+    async def test_portal_url_shown_in_header_when_set(
+        self,
+        registered_tools: dict[str, Callable[..., Awaitable[str]]],
+    ) -> None:
+        """When portal_url is set, list_jupyter_servers prepends a portal link."""
+        s = Settings(
+            notebook_namespace="jupyterlab",
+            domain="notebooks.af.uchicago.edu",
+            cpu_images=(_IMAGE,),
+            gpu_images=(),
+            portal_url="https://af.uchicago.edu/jupyterlab",
+        )
+        ctx = _make_ctx(settings=s)
+        output = await registered_tools["list_jupyter_servers"](ctx=ctx)
+        assert "https://af.uchicago.edu/jupyterlab" in output
+
+    async def test_portal_url_absent_when_not_set(
+        self,
+        registered_tools: dict[str, Callable[..., Awaitable[str]]],
+        settings: Settings,
+    ) -> None:
+        """When portal_url is None, no portal URL appears in the list output."""
+        assert settings.portal_url is None
+        ctx = _make_ctx(settings=settings)
+        output = await registered_tools["list_jupyter_servers"](ctx=ctx)
+        # The token must not appear, and no portal URL prefix either
+        assert "Browse" not in output
+
+    async def test_portal_url_is_not_tokenized(
+        self,
+        registered_tools: dict[str, Callable[..., Awaitable[str]]],
+    ) -> None:
+        """The portal URL line must never contain a token."""
+        s = Settings(
+            notebook_namespace="jupyterlab",
+            domain="notebooks.af.uchicago.edu",
+            cpu_images=(_IMAGE,),
+            gpu_images=(),
+            portal_url="https://af.uchicago.edu/jupyterlab",
+        )
+        ctx = _make_ctx(settings=s)
+        # Create a server so there's something to list
+        await registered_tools["create_jupyter_server"](image=_IMAGE, ctx=ctx)
+        output = await registered_tools["list_jupyter_servers"](ctx=ctx)
+        assert "token" not in output.lower()
+
+
+class TestGetJupyterServerNoIncludeUrl:
+    async def test_include_url_parameter_removed(
+        self,
+        registered_tools: dict[str, Callable[..., Awaitable[str]]],
+        settings: Settings,
+    ) -> None:
+        """get_jupyter_server must NOT expose include_url as a user-facing parameter."""
+        from mcp.server.mcpserver import MCPServer
+
+        mcp = MCPServer("test")
+        register(mcp)
+        get_tool = next(t for t in mcp._tool_manager.list_tools() if t.name == "get_jupyter_server")
+        params = get_tool.parameters.get("properties", {})
+        assert "include_url" not in params, (
+            "include_url must be removed from get_jupyter_server — the token must never transit LLM context"
+        )
+
+    async def test_no_tokenized_url_in_get_response(
+        self,
+        registered_tools: dict[str, Callable[..., Awaitable[str]]],
+        settings: Settings,
+    ) -> None:
+        """get_jupyter_server must never return a tokenized URL."""
+        ctx = _make_ctx(settings=settings)
+        await registered_tools["create_jupyter_server"](image=_IMAGE, name="mine", ctx=ctx)
+        output = await registered_tools["get_jupyter_server"](name="mine", ctx=ctx)
+        # Token is a base64-encoded 32-byte value — check no ?token= query param
+        assert "?token=" not in output
+
+    async def test_portal_url_shown_when_set(
+        self,
+        registered_tools: dict[str, Callable[..., Awaitable[str]]],
+    ) -> None:
+        """When portal_url is set, get_jupyter_server includes a portal link."""
+        s = Settings(
+            notebook_namespace="jupyterlab",
+            domain="notebooks.af.uchicago.edu",
+            cpu_images=(_IMAGE,),
+            gpu_images=(),
+            portal_url="https://af.uchicago.edu/jupyterlab",
+        )
+        ctx = _make_ctx(settings=s)
+        await registered_tools["create_jupyter_server"](image=_IMAGE, name="mine", ctx=ctx)
+        output = await registered_tools["get_jupyter_server"](name="mine", ctx=ctx)
+        assert "https://af.uchicago.edu/jupyterlab" in output
+
+    async def test_url_row_absent_when_portal_url_not_set(
+        self,
+        registered_tools: dict[str, Callable[..., Awaitable[str]]],
+        settings: Settings,
+    ) -> None:
+        """When portal_url is None, get_jupyter_server omits the URL row entirely."""
+        assert settings.portal_url is None
+        ctx = _make_ctx(settings=settings)
+        await registered_tools["create_jupyter_server"](image=_IMAGE, name="mine", ctx=ctx)
+        output = await registered_tools["get_jupyter_server"](name="mine", ctx=ctx)
+        assert "url" not in output.lower() or "| url |" not in output
+
+
 class TestGetGpuAvailabilityTool:
     async def test_no_gpu_nodes(
         self,

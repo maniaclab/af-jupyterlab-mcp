@@ -82,16 +82,10 @@ def register(mcp: MCPServer) -> None:
                 duration_hours=duration_hours,
             )
             output = format_notebook(info)
-            return append_next_actions(
-                output,
-                [
-                    f"Use `get_jupyter_server(name={info['id']!r})` to check readiness.",
-                    (
-                        f"Use `get_jupyter_server(name={info['id']!r}, include_url=True)` "
-                        "to get the tokenized URL once it's ready."
-                    ),
-                ],
-            )
+            hints = [f"Use `get_jupyter_server(name={info['id']!r})` to check readiness."]
+            if settings.portal_url:
+                hints.append(f"Visit {settings.portal_url} in your browser to access the notebook.")
+            return append_next_actions(output, hints)
         except (GuardrailError, QuotaExceededError, NameConflictError) as exc:
             return format_error(
                 exc,
@@ -115,14 +109,16 @@ def register(mcp: MCPServer) -> None:
                 settings=settings,
                 owner=claims.unixname,
             )
-            return format_notebook_list(infos)
+            listing = format_notebook_list(infos)
+            if settings.portal_url:
+                return f"Browse your servers: {settings.portal_url}\n\n{listing}"
+            return listing
         except Exception as exc:  # noqa: BLE001
             return format_error(exc)
 
     @mcp.tool()
     async def get_jupyter_server(
         name: str,
-        include_url: bool = False,
         include_log: bool = False,
         *,
         ctx: Context[Any, Any],
@@ -130,10 +126,9 @@ def register(mcp: MCPServer) -> None:
         """Get rich status for one of the caller's own JupyterLab servers.
 
         Refuses (with a not-found-or-not-yours message) for servers owned by
-        another user, without revealing whether the name exists at all.
-        include_url=True opts in to returning the tokenized URL (your own
-        credential; kept out of the default response since it transits LLM
-        context and client logs).
+        another user, without revealing whether the name exists at all. The
+        tokenized notebook URL is never returned; use the portal to access the
+        notebook in a browser.
         """
         try:
             verifier, clients, settings = _lifespan(ctx)
@@ -145,8 +140,11 @@ def register(mcp: MCPServer) -> None:
                 name=name,
                 owner=claims.unixname,
                 include_log=include_log,
-                include_url=include_url,
+                include_url=False,
             )
+            # Surface the portal link (no token) if the operator has configured one.
+            if settings.portal_url:
+                info["url"] = settings.portal_url
             return format_notebook(info)
         except NotFoundOrNotYoursError as exc:
             return format_error(
