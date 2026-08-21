@@ -116,10 +116,9 @@ def register(mcp: MCPServer) -> None:
             listing = format_notebook_list(infos)
         except Exception as exc:  # noqa: BLE001
             return format_error(exc)
-        else:
-            if settings.portal_url:
-                return f"Browse your servers: {settings.portal_url}\n\n{listing}"
-            return listing
+        if settings.portal_url:
+            return f"Browse your servers: {settings.portal_url}\n\n{listing}"
+        return listing
 
     @mcp.tool()
     async def get_jupyter_server(
