@@ -512,6 +512,31 @@ class TestGetNotebookOwnerScoping:
         assert "url" not in info
 
 
+class TestHoursRemaining:
+    """hours_remaining must round UP so a freshly created 1-hour server shows 1."""
+
+    def test_one_hour_server_shows_one_hour_remaining_immediately_after_creation(
+        self, clients: K8sClients, settings: Settings
+    ) -> None:
+        create_notebook(
+            clients,
+            settings=settings,
+            owner="kratsg",
+            owner_uid=1,
+            name="mine",
+            image=_IMAGE,
+            cpu_cores=1,
+            memory_gb=1,
+            gpus=0,
+            gpu_product=None,
+            duration_hours=1,
+        )
+        info = get_notebook(clients, settings=settings, name="mine", owner="kratsg")
+        # A server requested for 1 hour must not immediately display 0 hours
+        # remaining.  The floor/int truncation of (1h - ε) gives 0; ceil gives 1.
+        assert info["hours_remaining"] == 1
+
+
 class TestListNotebooksOwnerScoping:
     def test_only_returns_callers_own_notebooks(
         self, clients: K8sClients, settings: Settings

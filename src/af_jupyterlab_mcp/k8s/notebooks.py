@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import base64
 import datetime
+import math
 import os
 import re
 import urllib.parse
@@ -302,7 +303,7 @@ def _build_notebook_info(
             tz=datetime.timezone.utc
         )
         notebook["expiration_date"] = expiration_date.isoformat()
-        notebook["hours_remaining"] = int(time_remaining.total_seconds() / 3600)
+        notebook["hours_remaining"] = math.ceil(time_remaining.total_seconds() / 3600)
 
     conditions = [
         {
