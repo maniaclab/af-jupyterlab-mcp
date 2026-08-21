@@ -8,7 +8,7 @@ portal-style patch-on-409 adoption), and guardrail ranges are enforced.
 
 from __future__ import annotations
 
-import base64
+import urllib.parse
 
 import pytest
 from kubernetes.client.exceptions import ApiException
@@ -51,7 +51,7 @@ def clients() -> K8sClients:
 
 
 class TestCreateNotebookHappyPath:
-    def test_creates_all_four_objects(
+    def test_creates_three_objects(
         self, clients: K8sClients, settings: Settings
     ) -> None:
         info = create_notebook(
@@ -72,7 +72,6 @@ class TestCreateNotebookHappyPath:
         assert clients.core_v1.created_order == [
             "pod/kratsg-notebook-1",
             "service/kratsg-notebook-1",
-            "secret/kratsg-notebook-1",
             "ingress/kratsg-notebook-1",
         ]
 
@@ -203,33 +202,7 @@ class TestCreateNotebookRollbackOn409:
         assert ("jupyterlab", "racer") not in clients.core_v1.pods
         assert clients.core_v1.deleted_order == ["pod/racer"]
 
-    def test_409_on_secret_rolls_back_pod_and_service(
-        self, clients: K8sClients, settings: Settings
-    ) -> None:
-        def _boom(*_a: object, **_k: object) -> None:
-            raise ApiException(status=409, reason="AlreadyExists")
-
-        clients.core_v1.create_namespaced_secret = _boom
-
-        with pytest.raises(NameConflictError):
-            create_notebook(
-                clients,
-                settings=settings,
-                owner="kratsg",
-                owner_uid=1,
-                name="racer2",
-                image=_IMAGE,
-                cpu_cores=1,
-                memory_gb=1,
-                gpus=0,
-                gpu_product=None,
-                duration_hours=8,
-            )
-        assert ("jupyterlab", "racer2") not in clients.core_v1.pods
-        assert ("jupyterlab", "racer2") not in clients.core_v1.services
-        assert clients.core_v1.deleted_order == ["service/racer2", "pod/racer2"]
-
-    def test_409_on_ingress_rolls_back_pod_service_and_secret(
+    def test_409_on_ingress_rolls_back_pod_and_service(
         self, clients: K8sClients, settings: Settings
     ) -> None:
         def _boom(*_a: object, **_k: object) -> None:
@@ -253,9 +226,7 @@ class TestCreateNotebookRollbackOn409:
             )
         assert ("jupyterlab", "racer3") not in clients.core_v1.pods
         assert ("jupyterlab", "racer3") not in clients.core_v1.services
-        assert ("jupyterlab", "racer3") not in clients.core_v1.secrets
         assert clients.core_v1.deleted_order == [
-            "secret/racer3",
             "service/racer3",
             "pod/racer3",
         ]
@@ -474,8 +445,11 @@ class TestGetNotebookOwnerScoping:
             include_url=True,
         )
         assert info["url"].startswith("https://mine.notebooks.af.uchicago.edu?token=")
-        token_b64 = clients.core_v1.secrets[("jupyterlab", "mine")].data["token"]
-        assert base64.b64decode(token_b64)  # secret token is valid base64
+        # Token is read from the pod's JUPYTER_TOKEN env var (no Secret).
+        pod = clients.core_v1.pods[("jupyterlab", "mine")]
+        env_map = {e.name: e.value for e in pod.spec.containers[0].env}
+        qs = urllib.parse.parse_qs(urllib.parse.urlsplit(info["url"]).query)
+        assert qs["token"] == [env_map["JUPYTER_TOKEN"]]
 
     def test_include_url_false_by_default(
         self, clients: K8sClients, settings: Settings
@@ -558,7 +532,6 @@ class TestDeleteNotebookOwnerScoping:
         delete_notebook(clients, settings=settings, name="mine", owner="kratsg")
         assert ("jupyterlab", "mine") not in clients.core_v1.pods
         assert ("jupyterlab", "mine") not in clients.core_v1.services
-        assert ("jupyterlab", "mine") not in clients.core_v1.secrets
         assert ("jupyterlab", "mine") not in clients.networking_v1.ingresses
 
     def test_other_user_cannot_delete_notebook(

@@ -64,7 +64,6 @@ class FakeCoreV1Api:
 
     pods: dict[tuple[str, str], Any] = field(default_factory=dict)
     services: dict[tuple[str, str], Any] = field(default_factory=dict)
-    secrets: dict[tuple[str, str], Any] = field(default_factory=dict)
     nodes: dict[str, Any] = field(default_factory=dict)
     events: dict[str, list[Any]] = field(default_factory=dict)
     pod_logs: dict[tuple[str, str], str] = field(default_factory=dict)
@@ -88,31 +87,6 @@ class FakeCoreV1Api:
         self.services[(namespace, name)] = copy.deepcopy(body)
         self.created_order.append(f"service/{name}")
         return self.services[(namespace, name)]
-
-    def create_namespaced_secret(self, namespace: str, body: Any) -> Any:
-        name = body["metadata"]["name"]
-        if name in self.conflict_on_create:
-            raise ApiException(status=409, reason="AlreadyExists")
-        # The real client deserializes GET responses into typed, attribute-
-        # access model objects (V1Secret) even though create_* accepts a
-        # plain dict body -- mirror that asymmetry here.
-        self.secrets[(namespace, name)] = _Obj(
-            metadata=_Obj(
-                name=name,
-                namespace=namespace,
-                labels=dict(body["metadata"].get("labels") or {}),
-            ),
-            data=dict(body.get("data") or {}),
-            type=body.get("type"),
-        )
-        self.created_order.append(f"secret/{name}")
-        return self.secrets[(namespace, name)]
-
-    def read_namespaced_secret(self, name: str, namespace: str) -> Any:
-        try:
-            return self.secrets[(namespace, name)]
-        except KeyError:
-            raise ApiException(status=404, reason="NotFound") from None
 
     def read_namespaced_pod(self, name: str, namespace: str) -> Any:
         try:
@@ -183,10 +157,6 @@ class FakeCoreV1Api:
         self.services.pop((namespace, name), None)
         self.deleted_order.append(f"service/{name}")
 
-    def delete_namespaced_secret(self, name: str, namespace: str) -> None:
-        self.secrets.pop((namespace, name), None)
-        self.deleted_order.append(f"secret/{name}")
-
 
 @dataclass
 class FakeNetworkingV1Api:
@@ -237,6 +207,12 @@ def _pod_from_manifest(manifest: dict[str, Any]) -> Any:
                         requests=container["resources"]["requests"],
                         limits=container["resources"]["limits"],
                     ),
+                    # env is needed so notebooks._build_notebook_info can read
+                    # JUPYTER_TOKEN directly from the pod spec (no Secret).
+                    env=[
+                        _Obj(name=e["name"], value=e.get("value"))
+                        for e in container.get("env", [])
+                    ],
                 )
             ],
             node_name=None,
