@@ -5,9 +5,12 @@ Deployment runs in -- see rolebinding.yaml for the cross-namespace bind).
 Two honest caveats (af-mcp-platform#189):
   1. RBAC cannot scope by label selector -- the owner= label check is
      application-level (see af_jupyterlab_mcp.k8s.notebooks), not enforced here.
-  2. The `secrets` grant is the scariest part of this Role; it is only safe
-     because notebook.namespace is assumed to hold nothing but notebooks
-     (open question 1 in the issue -- verify before granting this in prod).
+  2. The `secrets` grant covers per-notebook token Secrets (created/read/deleted
+     by the MCP) as well as any other Secrets present in the notebook namespace
+     (e.g. ceph-secret, ciconnect-creds, notebook-tls in af-jupyter).  This is
+     accepted because RBAC cannot filter by label or name prefix.  The verb set
+     is intentionally minimal -- list is absent because the code never calls
+     list_namespaced_secret.
 */}}
 {{- if .Values.rbac.create -}}
 apiVersion: rbac.authorization.k8s.io/v1
@@ -19,8 +22,14 @@ metadata:
     {{- include "af-jupyterlab-mcp.labels" . | nindent 4 }}
 rules:
   - apiGroups: [""]
-    resources: ["pods", "services", "secrets"]
+    resources: ["pods"]
     verbs: ["get", "list", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["create", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "delete"]
   - apiGroups: [""]
     resources: ["pods/log"]
     verbs: ["get"]
@@ -29,5 +38,5 @@ rules:
     verbs: ["list"]
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses"]
-    verbs: ["get", "list", "create", "delete"]
+    verbs: ["create", "delete"]
 {{- end }}
