@@ -32,12 +32,11 @@ _SETTINGS = {
 
 
 class TestRenderManifests:
-    def test_renders_all_four_kinds(self) -> None:
+    def test_renders_three_kinds(self) -> None:
         manifests = render_manifests(**_SETTINGS)
-        assert set(manifests) == {"pod", "service", "secret", "ingress"}
+        assert set(manifests) == {"pod", "service", "ingress"}
         assert manifests["pod"]["kind"] == "Pod"
         assert manifests["service"]["kind"] == "Service"
-        assert manifests["secret"]["kind"] == "Secret"
         assert manifests["ingress"]["kind"] == "Ingress"
 
     def test_pod_name_and_namespace(self) -> None:
@@ -46,7 +45,7 @@ class TestRenderManifests:
         assert pod["metadata"]["name"] == "kratsg-notebook-1"
         assert pod["metadata"]["namespace"] == "jupyterlab"
 
-    def test_created_by_label_added_to_all_four(self) -> None:
+    def test_created_by_label_added_to_all(self) -> None:
         manifests = render_manifests(**_SETTINGS)
         for kind, manifest in manifests.items():
             assert (
@@ -57,10 +56,9 @@ class TestRenderManifests:
         manifests = render_manifests(**_SETTINGS)
         assert "globus-id" not in manifests["pod"]["metadata"]["labels"]
 
-    def test_owner_label_on_pod_and_secret(self) -> None:
+    def test_owner_label_on_pod(self) -> None:
         manifests = render_manifests(**_SETTINGS)
         assert manifests["pod"]["metadata"]["labels"]["owner"] == "kratsg"
-        assert manifests["secret"]["metadata"]["labels"]["owner"] == "kratsg"
 
     def test_time2delete_label_matches_duration(self) -> None:
         manifests = render_manifests(**_SETTINGS)
@@ -88,10 +86,6 @@ class TestRenderManifests:
             manifests["ingress"]["spec"]["rules"][0]["host"]
             == "kratsg-notebook-1.notebooks.af.uchicago.edu"
         )
-
-    def test_secret_token_data(self) -> None:
-        manifests = render_manifests(**_SETTINGS)
-        assert manifests["secret"]["data"]["token"] == "dG9rZW4="
 
     def test_jupyter_token_env_on_container(self) -> None:
         manifests = render_manifests(**_SETTINGS)

@@ -5,10 +5,10 @@ from af-portal's ``portal/jupyterlab.py``, ``kubernetes==...`` client. Two
 behaviors are intentionally NOT ported, per af-mcp-platform issue #189:
 
 - No patch-on-409 fallback. The portal silently adopts a same-named
-  service/secret/ingress on a 409, which is fine for the portal's own
-  re-deploys but wrong for a second, independent writer: here a 409 on ANY
-  of the four creates is a hard error, and whatever was already created in
-  that call is rolled back (``_rollback``).
+  service/ingress on a 409, which is fine for the portal's own re-deploys
+  but wrong for a second, independent writer: here a 409 on ANY of the
+  three creates is a hard error, and whatever was already created in that
+  call is rolled back (``_rollback``).
 - Owner-scoping is enforced everywhere a pod is looked up by name
   (``get_notebook``, ``delete_notebook``): a caller who is not the pod's
   ``owner`` label gets the same error as a nonexistent pod
@@ -96,8 +96,6 @@ def _rollback(
                 clients.core_v1.delete_namespaced_pod(name, namespace)
             elif kind == "service":
                 clients.core_v1.delete_namespaced_service(name, namespace)
-            elif kind == "secret":
-                clients.core_v1.delete_namespaced_secret(name, namespace)
             elif kind == "ingress":
                 clients.networking_v1.delete_namespaced_ingress(name, namespace)
         except ApiException:  # noqa: PERF203 -- best-effort rollback; a delete failing (e.g. already gone) must not mask the original 409
@@ -118,12 +116,14 @@ def create_notebook(
     gpu_product: str | None,
     duration_hours: int,
 ) -> dict[str, Any]:
-    """Create the pod+service+secret+ingress quadruple for one notebook.
+    """Create the pod+service+ingress triple for one notebook.
 
     ``owner``/``owner_uid`` must come from verified broker JWT claims, never
-    from caller-supplied arguments (enforced by the tool layer). Returns a
-    dict describing the created notebook -- deliberately never the token or
-    a tokenized URL (see ``get_jupyter_server(include_url=True)`` for that).
+    from caller-supplied arguments (enforced by the tool layer). The token
+    is stored only in the pod's JUPYTER_TOKEN env var (no separate Secret).
+    Returns a dict describing the created notebook -- deliberately never the
+    token or a tokenized URL (see ``get_jupyter_server(include_url=True)``
+    for that).
 
     Raises:
         GuardrailError / ImageNotAllowedError: a server-side guardrail failed.
@@ -201,10 +201,6 @@ def create_notebook(
             namespace=settings.notebook_namespace, body=manifests["service"]
         )
         created.append("service")
-        clients.core_v1.create_namespaced_secret(
-            namespace=settings.notebook_namespace, body=manifests["secret"]
-        )
-        created.append("secret")
         clients.networking_v1.create_namespaced_ingress(
             namespace=settings.notebook_namespace, body=manifests["ingress"]
         )
@@ -336,10 +332,10 @@ def _build_notebook_info(
         notebook["log"] = log
 
     if include_url and pod.metadata.deletion_timestamp is None:
-        secret = api.read_namespaced_secret(
-            pod.metadata.name, settings.notebook_namespace
-        )
-        token = secret.data["token"]
+        # The token is stored directly in the pod's JUPYTER_TOKEN env var
+        # (no separate Secret -- the pod spec is the single source of truth).
+        env_map = {e.name: e.value for e in pod.spec.containers[0].env}
+        token = env_map["JUPYTER_TOKEN"]
         query = urllib.parse.urlencode({"token": token})
         notebook["url"] = f"https://{pod.metadata.name}.{settings.domain}?{query}"
 
@@ -402,7 +398,7 @@ def list_notebooks(
 def delete_notebook(
     clients: K8sClients, *, settings: Settings, name: str, owner: str
 ) -> None:
-    """Delete the pod+service+secret+ingress quadruple, refusing non-owners.
+    """Delete the pod+service+ingress triple, refusing non-owners.
 
     Raises:
         NotFoundOrNotYoursError: same not-found-or-not-yours refusal as
@@ -417,5 +413,4 @@ def delete_notebook(
     namespace = settings.notebook_namespace
     clients.core_v1.delete_namespaced_pod(notebook_id, namespace)
     clients.core_v1.delete_namespaced_service(notebook_id, namespace)
-    clients.core_v1.delete_namespaced_secret(notebook_id, namespace)
     clients.networking_v1.delete_namespaced_ingress(notebook_id, namespace)

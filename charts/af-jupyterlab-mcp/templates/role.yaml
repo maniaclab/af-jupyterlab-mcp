@@ -2,15 +2,13 @@
 Namespace Role in the notebook namespace (NOT the release namespace this
 Deployment runs in -- see rolebinding.yaml for the cross-namespace bind).
 
-Two honest caveats (af-mcp-platform#189):
-  1. RBAC cannot scope by label selector -- the owner= label check is
-     application-level (see af_jupyterlab_mcp.k8s.notebooks), not enforced here.
-  2. The `secrets` grant covers per-notebook token Secrets (created/read/deleted
-     by the MCP) as well as any other Secrets present in the notebook namespace
-     (e.g. ceph-secret, ciconnect-creds, notebook-tls in af-jupyter).  This is
-     accepted because RBAC cannot filter by label or name prefix.  The verb set
-     is intentionally minimal -- list is absent because the code never calls
-     list_namespaced_secret.
+One honest caveat (af-mcp-platform#189):
+  RBAC cannot scope by label selector -- the owner= label check is
+  application-level (see af_jupyterlab_mcp.k8s.notebooks), not enforced here.
+
+No `secrets` grant is needed: the JupyterLab token is stored only in the
+pod's JUPYTER_TOKEN env var and read back directly from the pod spec on
+get_jupyter_server(include_url=True) -- no Secret object is created or read.
 */}}
 {{- if .Values.rbac.create -}}
 apiVersion: rbac.authorization.k8s.io/v1
@@ -27,9 +25,6 @@ rules:
   - apiGroups: [""]
     resources: ["services"]
     verbs: ["create", "delete"]
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get", "create", "delete"]
   - apiGroups: [""]
     resources: ["pods/log"]
     verbs: ["get"]

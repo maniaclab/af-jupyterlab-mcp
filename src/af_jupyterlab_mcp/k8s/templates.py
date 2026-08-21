@@ -1,9 +1,9 @@
-"""Render the four ported Jinja templates into Kubernetes manifest dicts.
+"""Render the three ported Jinja templates into Kubernetes manifest dicts.
 
 The templates in ``af_jupyterlab_mcp/k8s/templates/*.yaml.j2`` are a verbatim
-port of af-portal's ``portal/templates/jupyterlab/{pod,service,secret,
-ingress}.yaml`` (see cross-pointing comment in that repo), with two
-deliberate divergences called for by af-mcp-platform issue #189:
+port of af-portal's ``portal/templates/jupyterlab/{pod,service,ingress}.yaml``
+(see cross-pointing comment in that repo), with two deliberate divergences
+called for by af-mcp-platform issue #189:
 
   1. every object gets a ``created-by: af-jupyterlab-mcp`` label (audit; the
      portal ignores labels it does not recognize, so this is safe for its
@@ -25,13 +25,12 @@ _TEMPLATES_DIR = Path(__file__).parent / "templates"
 _KIND_TO_FILENAME = {
     "pod": "pod.yaml.j2",
     "service": "service.yaml.j2",
-    "secret": "secret.yaml.j2",
     "ingress": "ingress.yaml.j2",
 }
 
 
 def render_manifests(**template_vars: Any) -> dict[str, dict[str, Any]]:
-    """Render the pod/service/secret/ingress manifests for one notebook.
+    """Render the pod/service/ingress manifests for one notebook.
 
     Args:
         **template_vars: notebook_id, notebook_name, namespace, domain_name,
@@ -40,8 +39,8 @@ def render_manifests(**template_vars: Any) -> dict[str, dict[str, Any]]:
             gpu_product, hours_remaining.
 
     Returns:
-        A dict with keys "pod", "service", "secret", "ingress", each mapping
-        to the parsed manifest (a plain dict, ready for the kubernetes client).
+        A dict with keys "pod", "service", "ingress", each mapping to the
+        parsed manifest (a plain dict, ready for the kubernetes client).
     """
     env = Environment(loader=FileSystemLoader(str(_TEMPLATES_DIR)))
     manifests: dict[str, dict[str, Any]] = {}
