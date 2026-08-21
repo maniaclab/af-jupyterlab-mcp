@@ -294,14 +294,8 @@ class TestListJupyterServersPortalUrl:
 
 
 class TestGetJupyterServerNoIncludeUrl:
-    async def test_include_url_parameter_removed(
-        self,
-        registered_tools: dict[str, Callable[..., Awaitable[str]]],
-        settings: Settings,
-    ) -> None:
+    def test_include_url_parameter_removed(self) -> None:
         """get_jupyter_server must NOT expose include_url as a user-facing parameter."""
-        from mcp.server.mcpserver import MCPServer
-
         mcp = MCPServer("test")
         register(mcp)
         get_tool = next(t for t in mcp._tool_manager.list_tools() if t.name == "get_jupyter_server")

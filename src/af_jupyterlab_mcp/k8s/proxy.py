@@ -52,10 +52,12 @@ async def call_notebook_tool(
     mcp_url = f"{notebook_url}/mcp?{urllib.parse.urlencode({'token': token})}"
 
     try:
-        async with streamable_http_client(mcp_url) as (read_stream, write_stream):
-            async with ClientSession(read_stream, write_stream) as session:
-                await session.initialize()
-                result = await session.call_tool(tool_name, tool_args)
+        async with (
+            streamable_http_client(mcp_url) as (read_stream, write_stream),
+            ClientSession(read_stream, write_stream) as session,
+        ):
+            await session.initialize()
+            result = await session.call_tool(tool_name, tool_args)
     except Exception as exc:  # noqa: BLE001
         return format_error(
             exc,

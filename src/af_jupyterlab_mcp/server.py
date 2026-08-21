@@ -27,6 +27,7 @@ from af_jupyterlab_mcp.auth.broker import (
 from af_jupyterlab_mcp.config import Settings
 from af_jupyterlab_mcp.k8s.notebooks import K8sClients
 from af_jupyterlab_mcp.tools import jupyterlab as jupyterlab_tools
+from af_jupyterlab_mcp.tools import nb_proxy as nb_proxy_tools
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -47,6 +48,7 @@ _INSTRUCTIONS = (
 def _register_all(mcp: MCPServer) -> None:
     """Register every tool module on *mcp*."""
     jupyterlab_tools.register(mcp)
+    nb_proxy_tools.register(mcp)
 
 
 def _build_k8s_clients() -> K8sClients:

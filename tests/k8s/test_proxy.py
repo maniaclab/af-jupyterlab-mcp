@@ -14,7 +14,6 @@ import pytest
 from af_jupyterlab_mcp.k8s.notebooks import get_notebook_token
 from af_jupyterlab_mcp.k8s.proxy import call_notebook_tool
 
-
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
 # ---------------------------------------------------------------------------
@@ -47,11 +46,19 @@ def _make_pod_no_token() -> Any:
     return _Obj(
         metadata=_Obj(name="nb-alice-1"),
         spec=_Obj(
-            containers=[
-                _Obj(env=[_Obj(name="OTHER_VAR", value="other")])
-            ]
+            containers=[_Obj(env=[_Obj(name="OTHER_VAR", value="other")])]
         ),
     )
+
+
+def _make_tool_result(text: str, is_error: bool = False) -> MagicMock:
+    content = MagicMock()
+    content.type = "text"
+    content.text = text
+    result = MagicMock()
+    result.content = [content]
+    result.isError = is_error
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -72,7 +79,6 @@ class TestGetNotebookToken:
     def test_raises_value_error_when_token_is_empty_string(self) -> None:
         """An empty-string JUPYTER_TOKEN is treated as missing."""
         pod = _make_pod(token="")
-        # Override the value to empty string
         pod.spec.containers[0].env[0] = _Obj(name="JUPYTER_TOKEN", value="")
         with pytest.raises(ValueError, match="JUPYTER_TOKEN not found"):
             get_notebook_token(pod)
@@ -81,16 +87,6 @@ class TestGetNotebookToken:
 # ---------------------------------------------------------------------------
 # Tests: call_notebook_tool
 # ---------------------------------------------------------------------------
-
-
-def _make_tool_result(text: str, is_error: bool = False) -> MagicMock:
-    content = MagicMock()
-    content.type = "text"
-    content.text = text
-    result = MagicMock()
-    result.content = [content]
-    result.isError = is_error
-    return result
 
 
 class TestCallNotebookTool:
@@ -103,11 +99,11 @@ class TestCallNotebookTool:
         mock_session.call_tool = AsyncMock(return_value=mock_result)
 
         @asynccontextmanager
-        async def fake_transport(url: Any, **kwargs: Any):  # noqa: ANN001, ANN002
+        async def fake_transport(_url: Any, **_kwargs: Any):
             yield (AsyncMock(), AsyncMock())
 
         @asynccontextmanager
-        async def fake_session_ctx(*args: Any, **kwargs: Any):  # noqa: ANN002
+        async def fake_session_ctx(*_args: Any, **_kwargs: Any):
             yield mock_session
 
         with (
@@ -133,12 +129,12 @@ class TestCallNotebookTool:
         mock_session.call_tool = AsyncMock(return_value=mock_result)
 
         @asynccontextmanager
-        async def fake_transport(url: str, **kwargs: Any):
+        async def fake_transport(url: str, **_kwargs: Any):
             captured_url.append(url)
             yield (AsyncMock(), AsyncMock())
 
         @asynccontextmanager
-        async def fake_session_ctx(*args: Any, **kwargs: Any):
+        async def fake_session_ctx(*_args: Any, **_kwargs: Any):
             yield mock_session
 
         with (
@@ -164,18 +160,18 @@ class TestCallNotebookTool:
         mock_session = AsyncMock()
         mock_session.initialize = AsyncMock()
 
-        async def fake_call_tool(name: str, arguments: dict | None = None, **kwargs: Any) -> Any:
+        async def fake_call_tool(name: str, arguments: dict | None = None, **_kwargs: Any) -> Any:
             captured_calls.append((name, arguments or {}))
             return mock_result
 
         mock_session.call_tool = fake_call_tool
 
         @asynccontextmanager
-        async def fake_transport(url: str, **kwargs: Any):
+        async def fake_transport(_url: str, **_kwargs: Any):
             yield (AsyncMock(), AsyncMock())
 
         @asynccontextmanager
-        async def fake_session_ctx(*args: Any, **kwargs: Any):
+        async def fake_session_ctx(*_args: Any, **_kwargs: Any):
             yield mock_session
 
         with (
@@ -200,11 +196,11 @@ class TestCallNotebookTool:
         mock_session.initialize = AsyncMock(side_effect=ConnectionError("unreachable"))
 
         @asynccontextmanager
-        async def fake_transport(url: str, **kwargs: Any):
+        async def fake_transport(_url: str, **_kwargs: Any):
             yield (AsyncMock(), AsyncMock())
 
         @asynccontextmanager
-        async def fake_session_ctx(*args: Any, **kwargs: Any):
+        async def fake_session_ctx(*_args: Any, **_kwargs: Any):
             yield mock_session
 
         with (
@@ -229,11 +225,11 @@ class TestCallNotebookTool:
         mock_session.call_tool = AsyncMock(return_value=mock_result)
 
         @asynccontextmanager
-        async def fake_transport(url: str, **kwargs: Any):
+        async def fake_transport(_url: str, **_kwargs: Any):
             yield (AsyncMock(), AsyncMock())
 
         @asynccontextmanager
-        async def fake_session_ctx(*args: Any, **kwargs: Any):
+        async def fake_session_ctx(*_args: Any, **_kwargs: Any):
             yield mock_session
 
         secret = "super-secret-token-xyz"

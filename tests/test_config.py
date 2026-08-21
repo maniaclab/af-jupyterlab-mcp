@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import os
-
-import pytest
+from typing import TYPE_CHECKING
 
 from af_jupyterlab_mcp.config import Settings
+
+if TYPE_CHECKING:
+    import pytest
 
 
 class TestPortalUrl:
