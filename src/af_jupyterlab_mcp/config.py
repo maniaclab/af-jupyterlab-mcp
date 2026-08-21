@@ -60,6 +60,11 @@ class Settings:
     max_servers_per_user: int | None = None
     max_gpus_per_request: int | None = None
 
+    # Portal browse URL surfaced by list_jupyter_servers.
+    # Set via JUPYTERLAB_MCP_PORTAL_URL. No default -- left None if unset,
+    # in which case list_jupyter_servers omits the portal link.
+    portal_url: str | None = None
+
     @property
     def all_images(self) -> tuple[str, ...]:
         """Return the deduplicated union of the CPU and GPU image allowlists."""
@@ -86,4 +91,6 @@ class Settings:
         max_gpus = _env_int_or_none("JUPYTERLAB_MCP_MAX_GPUS_PER_REQUEST")
         if max_gpus is not None:
             kwargs["max_gpus_per_request"] = max_gpus
+        if portal_url := os.environ.get("JUPYTERLAB_MCP_PORTAL_URL"):
+            kwargs["portal_url"] = portal_url
         return cls(**kwargs)  # type: ignore[arg-type]

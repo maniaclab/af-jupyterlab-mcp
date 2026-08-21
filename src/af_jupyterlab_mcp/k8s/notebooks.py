@@ -102,6 +102,22 @@ def _rollback(
             pass
 
 
+def get_notebook_token(pod: Any) -> str:
+    """Read JUPYTER_TOKEN from pod env.
+
+    The token is stored directly in the pod's JUPYTER_TOKEN env var (no
+    separate Secret). Raises ValueError if the var is absent or empty, so
+    callers can surface a clear error rather than silently calling a notebook
+    without a token.
+    """
+    env_map: dict[str, str] = {e.name: e.value for e in pod.spec.containers[0].env}
+    token = env_map.get("JUPYTER_TOKEN")
+    if not token:
+        msg = f"JUPYTER_TOKEN not found in pod {pod.metadata.name} env"
+        raise ValueError(msg)
+    return token
+
+
 def create_notebook(
     clients: K8sClients,
     *,
