@@ -85,6 +85,7 @@ check-docstrings = { cmd = "pydocstyle --add-ignore=D104,D105,D107 src/af_jupyte
 prek = "*"
 identify = ">=1.4.20"
 pylint = ">=3.2"
+tbump = ">=6.7.0"
 mypy = "*"
 ruff = "*"
 python-build = "*"
