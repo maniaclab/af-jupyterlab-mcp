@@ -19,7 +19,12 @@ import pytest
 from mcp.server.mcpserver import MCPServer
 
 from af_jupyterlab_mcp.config import Settings
+from af_jupyterlab_mcp.k8s.errors import NotebookNotReadyError, NotFoundOrNotYoursError
 from af_jupyterlab_mcp.k8s.notebooks import K8sClients, get_notebook_token
+from af_jupyterlab_mcp.k8s.proxy import (
+    NotebookToolTransportError,
+    NotebookToolUpstreamError,
+)
 from af_jupyterlab_mcp.tools import jupyterlab as jlab_tools
 from af_jupyterlab_mcp.tools import nb_proxy as nb_proxy_mod
 from tests.k8s.fakes import FakeCoreV1Api, FakeNetworkingV1Api
@@ -284,3 +289,100 @@ class TestNbExecuteCode:
             )
 
         assert real_token not in result
+
+
+# ---------------------------------------------------------------------------
+# Tests: _get_ready_pod_and_token raises, never returns a sniffed string
+# ---------------------------------------------------------------------------
+
+
+class TestGetReadyPodAndTokenRaises:
+    """`_get_ready_pod_and_token` raises typed exceptions rather than returning
+    an error string a caller must ``isinstance``-sniff for -- see the
+    "str-means-error" tunnel this replaced (nb_proxy.py's module docstring
+    and interop plan A.2).
+    """
+
+    async def test_raises_not_found_or_not_yours_for_unknown_notebook(
+        self, settings: Settings
+    ) -> None:
+        ctx, _ = _make_base_ctx(settings=settings, unixname="alice")
+        with pytest.raises(NotFoundOrNotYoursError):
+            await nb_proxy_mod._get_ready_pod_and_token(ctx, "does-not-exist")
+
+    async def test_raises_not_ready_for_pending_pod(self, settings: Settings) -> None:
+        ctx, _ = _make_base_ctx(settings=settings)
+        jtools = _jlab_tools_dict()
+        await jtools["create_jupyter_server"](
+            image=_IMAGE, name="alice-notebook-1", ctx=ctx
+        )
+        # Default fake pod has no Ready condition (status.conditions=[])
+        with pytest.raises(NotebookNotReadyError):
+            await nb_proxy_mod._get_ready_pod_and_token(ctx, "alice-notebook-1")
+
+    async def test_returns_pod_and_token_when_ready(self, settings: Settings) -> None:
+        ctx, core = _make_base_ctx(settings=settings)
+        jtools = _jlab_tools_dict()
+        await jtools["create_jupyter_server"](
+            image=_IMAGE, name="alice-notebook-1", ctx=ctx
+        )
+        pod = core.pods[("jupyterlab", "alice-notebook-1")]
+        pod.status.conditions = [MagicMock(type="Ready", status="True")]
+
+        result_pod, token = await nb_proxy_mod._get_ready_pod_and_token(
+            ctx, "alice-notebook-1"
+        )
+        assert result_pod is pod
+        assert token == get_notebook_token(pod)
+
+
+# ---------------------------------------------------------------------------
+# Tests: _call_upstream formats each raised exception with the right hints
+# ---------------------------------------------------------------------------
+
+
+class TestCallUpstreamErrorFormatting:
+    async def test_transport_error_gets_readiness_and_reachability_hints(
+        self, settings: Settings
+    ) -> None:
+        ctx, core = _make_base_ctx(settings=settings)
+        jtools = _jlab_tools_dict()
+        await jtools["create_jupyter_server"](
+            image=_IMAGE, name="alice-notebook-1", ctx=ctx
+        )
+        pod = core.pods[("jupyterlab", "alice-notebook-1")]
+        pod.status.conditions = [MagicMock(type="Ready", status="True")]
+
+        with patch(
+            "af_jupyterlab_mcp.tools.nb_proxy.call_notebook_tool",
+            new=AsyncMock(side_effect=NotebookToolTransportError("unreachable")),
+        ):
+            result = await nb_proxy_mod._call_upstream(
+                ctx, "alice-notebook-1", "list_kernels", {}
+            )
+
+        assert "**Error**" in result
+        assert "unreachable" in result
+        assert "get_jupyter_server" in result
+
+    async def test_upstream_error_is_formatted_without_extra_hints(
+        self, settings: Settings
+    ) -> None:
+        ctx, core = _make_base_ctx(settings=settings)
+        jtools = _jlab_tools_dict()
+        await jtools["create_jupyter_server"](
+            image=_IMAGE, name="alice-notebook-1", ctx=ctx
+        )
+        pod = core.pods[("jupyterlab", "alice-notebook-1")]
+        pod.status.conditions = [MagicMock(type="Ready", status="True")]
+
+        with patch(
+            "af_jupyterlab_mcp.tools.nb_proxy.call_notebook_tool",
+            new=AsyncMock(side_effect=NotebookToolUpstreamError("kernel not found")),
+        ):
+            result = await nb_proxy_mod._call_upstream(
+                ctx, "alice-notebook-1", "list_kernels", {}
+            )
+
+        assert "**Error**" in result
+        assert "kernel not found" in result

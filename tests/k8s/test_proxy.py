@@ -12,7 +12,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from af_jupyterlab_mcp.k8s.notebooks import get_notebook_token
-from af_jupyterlab_mcp.k8s.proxy import call_notebook_tool
+from af_jupyterlab_mcp.k8s.proxy import (
+    NotebookToolTransportError,
+    NotebookToolUpstreamError,
+    call_notebook_tool,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
@@ -55,7 +59,7 @@ def _make_tool_result(text: str, is_error: bool = False) -> MagicMock:
     content.text = text
     result = MagicMock()
     result.content = [content]
-    result.isError = is_error
+    result.is_error = is_error
     return result
 
 
@@ -199,8 +203,8 @@ class TestCallNotebookTool:
         assert name == "notebook_get-selected-cell"
         assert args == {"extra": "arg"}
 
-    async def test_returns_error_string_when_upstream_fails(self) -> None:
-        """Transport errors are caught and returned as error strings, not raised."""
+    async def test_raises_transport_error_when_upstream_unreachable(self) -> None:
+        """Transport errors raise NotebookToolTransportError, never a sniffed string."""
         mock_session = AsyncMock()
         mock_session.initialize = AsyncMock(side_effect=ConnectionError("unreachable"))
 
@@ -218,15 +222,45 @@ class TestCallNotebookTool:
                 "af_jupyterlab_mcp.k8s.proxy.ClientSession",
                 return_value=fake_session_ctx(),
             ),
+            pytest.raises(NotebookToolTransportError, match="unreachable"),
         ):
-            result = await call_notebook_tool(
+            await call_notebook_tool(
                 notebook_url="https://nb-alice-1.notebooks.af.uchicago.edu",
                 token="tok",
                 tool_name="execute_code",
                 tool_args={},
             )
 
-        assert "Error" in result or "error" in result.lower()
+    async def test_raises_upstream_error_when_tool_reports_is_error(self) -> None:
+        """A CallToolResult.is_error from jupyter-mcp-server raises NotebookToolUpstreamError."""
+        mock_result = _make_tool_result("kernel not found", is_error=True)
+
+        mock_session = AsyncMock()
+        mock_session.initialize = AsyncMock()
+        mock_session.call_tool = AsyncMock(return_value=mock_result)
+
+        @asynccontextmanager
+        async def fake_transport(_url: str, **_kwargs: Any):
+            yield (AsyncMock(), AsyncMock())
+
+        @asynccontextmanager
+        async def fake_session_ctx(*_args: Any, **_kwargs: Any):
+            yield mock_session
+
+        with (
+            patch("af_jupyterlab_mcp.k8s.proxy.streamable_http_client", fake_transport),
+            patch(
+                "af_jupyterlab_mcp.k8s.proxy.ClientSession",
+                return_value=fake_session_ctx(),
+            ),
+            pytest.raises(NotebookToolUpstreamError, match="kernel not found"),
+        ):
+            await call_notebook_tool(
+                notebook_url="https://nb-alice-1.notebooks.af.uchicago.edu",
+                token="tok",
+                tool_name="execute_code",
+                tool_args={},
+            )
 
     async def test_token_not_returned_in_result(self) -> None:
         """The injected token must never appear in the return value."""

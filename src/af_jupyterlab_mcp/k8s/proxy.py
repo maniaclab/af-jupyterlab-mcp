@@ -22,7 +22,18 @@ import urllib.parse
 from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
-from af_jupyterlab_mcp.tools._helpers import format_error
+
+class NotebookToolTransportError(RuntimeError):
+    """The upstream jupyter-mcp-server call failed at the transport/protocol level.
+
+    Covers connection failures, handshake failures, and any other exception
+    raised by the MCP client itself (not a tool-level error reported by
+    jupyter-mcp-server -- see ``NotebookToolUpstreamError`` for that).
+    """
+
+
+class NotebookToolUpstreamError(RuntimeError):
+    """jupyter-mcp-server itself reported a tool-level error (``CallToolResult.is_error``)."""
 
 
 async def call_notebook_tool(
@@ -32,15 +43,17 @@ async def call_notebook_tool(
     tool_name: str,
     tool_args: dict[str, object],
 ) -> str:
-    """Call a tool on the notebook's jupyter-mcp-server and return formatted output.
+    """Call a tool on the notebook's jupyter-mcp-server and return its text output.
 
     The token is injected into the upstream MCP URL server-side and is never
     returned to the caller. `tool_name` is the upstream tool name exactly as
     jupyter-mcp-server registers it (e.g. `"execute_code"`).
 
-    Returns a plain string: the text content of the first tool result on
-    success, or a formatted ``**Error**: ...`` string on failure (transport
-    error, tool not found, upstream error).
+    Returns the text content of the first tool result on success. Raises
+    ``NotebookToolTransportError`` on a transport/protocol failure, or
+    ``NotebookToolUpstreamError`` if jupyter-mcp-server reports its own
+    tool-level error -- callers are expected to catch these and format them
+    via ``format_error`` (never a bare string sniffed by ``isinstance``).
     """
     mcp_url = f"{notebook_url}/mcp?{urllib.parse.urlencode({'token': token})}"
 
@@ -51,20 +64,14 @@ async def call_notebook_tool(
         ):
             await session.initialize()
             result = await session.call_tool(tool_name, tool_args)
-    except Exception as exc:  # noqa: BLE001
-        return format_error(
-            exc,
-            hints=[
-                "Check that the notebook is Ready with `get_jupyter_server`.",
-                "Verify the notebook pod is reachable from the MCP server.",
-            ],
-        )
+    except Exception as exc:
+        raise NotebookToolTransportError(str(exc)) from exc
 
     # Extract text from the result content blocks.
     texts = [c.text for c in result.content if hasattr(c, "text")]
     output = "\n".join(texts) if texts else "(no output)"
 
     if result.is_error:
-        return format_error(Exception(output))
+        raise NotebookToolUpstreamError(output)
 
     return output

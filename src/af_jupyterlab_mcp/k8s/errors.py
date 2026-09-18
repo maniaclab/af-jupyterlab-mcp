@@ -29,3 +29,7 @@ class NotFoundOrNotYoursError(LookupError):
     Deliberately conflates "not found" and "not yours" in the message so a
     caller cannot distinguish the two and enumerate other users' server names.
     """
+
+
+class NotebookNotReadyError(RuntimeError):
+    """A notebook pod exists and is owned by the caller, but is not yet Ready."""
