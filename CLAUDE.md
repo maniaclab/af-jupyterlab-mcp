@@ -27,39 +27,16 @@ user's own notebook without the notebook token ever entering LLM context.
 
 ## Project layout
 
-```
-src/af_jupyterlab_mcp/
-├── cli.py               # argparse: `af-jupyterlab-mcp serve` (HTTP transport only)
-├── config.py             # env-driven Settings + the server-side guardrail constants
-├── server.py             # FastMCP setup, lifespan (k8s client + broker verifier), tool registration
-├── auth/
-│   └── broker.py          # extract_bearer(), get_broker_claims() -- broker-issued JWT verification
-├── k8s/
-│   ├── errors.py           # GuardrailError, NameConflictError, NotFoundOrNotYoursError, QuotaExceededError, ...
-│   ├── guardrails.py       # CPU/memory/duration range + image allowlist validation (compute_limits)
-│   ├── names.py            # sanitize_k8s_pod_name, name availability, default-name generation
-│   ├── templates.py        # Jinja rendering of the four ported manifests
-│   ├── notebooks.py        # create/get/list/delete notebook (ported af-portal logic + rollback/owner-scoping)
-│   ├── gpu.py               # get_gpu_availability (ported af-portal logic)
-│   └── templates/           # pod.yaml.j2, service.yaml.j2, secret.yaml.j2, ingress.yaml.j2
-│                             # verbatim port of af-portal/portal/templates/jupyterlab/*.yaml
-└── tools/
-    ├── _helpers.py          # format_error(), append_next_actions(), format_notebook[_list]()
-    └── jupyterlab.py         # the six @mcp.tool() functions
-tests/
-├── conftest.py               # shared tool_text() fixture (unwraps CallToolResult.content[0].text)
-├── auth/test_broker.py       # bearer extraction + claims retrieval
-├── k8s/
-│   ├── fakes.py                # in-memory kubernetes client stand-in (no cluster access needed)
-│   ├── test_names.py
-│   ├── test_guardrails.py
-│   ├── test_templates.py
-│   ├── test_notebooks.py       # owner-scoping, 409-rollback, quota tests
-│   └── test_gpu.py
-├── tools/test_jupyterlab.py   # the six tools registered + invoked end-to-end against fakes
-├── test_server.py             # HTTP transport + broker-mode ASGI app (real af_credentials, no mocks of our own auth code)
-└── test_cli.py
-```
+`src/af_jupyterlab_mcp/` splits into `auth/` (broker JWT verification), `k8s/`
+(all Kubernetes-facing logic: notebooks, guardrails, names, gpu, templates, and
+the nb_* proxy transport), and `tools/` (the `@mcp.tool()` registrations in
+`jupyterlab.py` and `nb_proxy.py`, plus shared `_helpers.py`). `tests/` mirrors
+this layout one-to-one (`tests/k8s/`, `tests/tools/`, `tests/auth/`), plus
+`test_config.py`, `test_server.py`, and `test_cli.py` at the top level. Run
+`tree src/af_jupyterlab_mcp tests` for the current file-by-file breakdown --
+deliberately not duplicated here, since a hand-maintained tree has already gone
+stale twice (most recently: it didn't mention `k8s/proxy.py`,
+`tools/nb_proxy.py`, or their tests after they shipped).
 
 ## Tool registration pattern
 
