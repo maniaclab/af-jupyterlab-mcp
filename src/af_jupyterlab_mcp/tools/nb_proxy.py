@@ -23,9 +23,11 @@ maniaclab/ml_platform issue TBD).
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from mcp.server.mcpserver import Context  # noqa: TC002
+from mcp.types import CallToolResult, TextContent, ToolAnnotations
+from pydantic import BaseModel
 
 from af_jupyterlab_mcp.auth.broker import get_broker_claims
 from af_jupyterlab_mcp.k8s.errors import NotebookNotReadyError, NotFoundOrNotYoursError
@@ -45,6 +47,19 @@ if TYPE_CHECKING:
     from mcp.server.mcpserver import MCPServer
 
     from af_jupyterlab_mcp.config import Settings
+
+
+class NbProxyResult(BaseModel):
+    """Structured result of a proxied nb_* tool call.
+
+    jupyter-mcp-server (the upstream every nb_* tool proxies to) returns
+    markdown/plain text for every tool, not structured data -- this is a
+    minimal wrapper around that opaque passthrough rather than a per-tool
+    schema, since there is no further structure to extract without coupling
+    to upstream's undocumented text format.
+    """
+
+    result: str
 
 
 def _lifespan(ctx: Any) -> tuple[Any, K8sClients, Settings]:
@@ -92,16 +107,17 @@ async def _call_upstream(
     notebook_server_id: str,
     tool_name: str,
     tool_args: dict[str, object],
-) -> str:
-    """Resolve the notebook pod, forward *tool_name* upstream, and return its output.
+) -> CallToolResult:
+    """Resolve the notebook pod, forward *tool_name* upstream, and wrap its output.
 
     Shared by all 16 ``nb_*`` tools: each just builds its own ``tool_args``
     dict and delegates here. Every failure mode (not found/not yours, not
     ready, no token, transport error, upstream tool error) is caught here
-    and turned into a single formatted error string via ``format_error`` --
+    and turned into a single ``is_error`` result via ``format_error`` --
     this is the one place that knows the recovery hint for each failure,
     rather than the ``str``-means-error tunnel each tool used to sniff via
-    ``isinstance(result, str)``.
+    ``isinstance(result, str)``. On success, the upstream's text output is
+    wrapped in ``NbProxyResult`` for ``structured_content``.
     """
     try:
         _pod, token = await _get_ready_pod_and_token(ctx, notebook_server_id)
@@ -122,7 +138,7 @@ async def _call_upstream(
 
     _, _, settings = _lifespan(ctx)
     try:
-        return await call_notebook_tool(
+        text = await call_notebook_tool(
             notebook_url=f"https://{notebook_server_id}.{settings.domain}",
             token=token,
             tool_name=tool_name,
@@ -139,6 +155,12 @@ async def _call_upstream(
     except NotebookToolUpstreamError as exc:
         return format_error(exc)
 
+    payload = NbProxyResult(result=text)
+    return CallToolResult(
+        content=[TextContent(type="text", text=text)],
+        structured_content=payload.model_dump(mode="json"),
+    )
+
 
 def register(mcp: MCPServer) -> None:
     """Register the 16 nb_* proxy tools on *mcp*."""
@@ -146,7 +168,13 @@ def register(mcp: MCPServer) -> None:
     # Filesystem
     # ------------------------------------------------------------------
 
-    @mcp.tool()
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            title="List files",
+            read_only_hint=True,
+            open_world_hint=True,
+        )
+    )
     async def nb_list_files(
         notebook_server_id: str,
         path: str = "",
@@ -156,7 +184,7 @@ def register(mcp: MCPServer) -> None:
         pattern: str = "",
         *,
         ctx: Context[Any, Any],
-    ) -> str:
+    ) -> Annotated[CallToolResult, NbProxyResult]:
         """List files on the notebook server's filesystem."""
         return await _call_upstream(
             ctx,
@@ -175,12 +203,18 @@ def register(mcp: MCPServer) -> None:
     # Kernel management
     # ------------------------------------------------------------------
 
-    @mcp.tool()
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            title="List kernels",
+            read_only_hint=True,
+            open_world_hint=True,
+        )
+    )
     async def nb_list_kernels(
         notebook_server_id: str,
         *,
         ctx: Context[Any, Any],
-    ) -> str:
+    ) -> Annotated[CallToolResult, NbProxyResult]:
         """List all running kernels on the notebook server."""
         return await _call_upstream(ctx, notebook_server_id, "list_kernels", {})
 
@@ -188,16 +222,27 @@ def register(mcp: MCPServer) -> None:
     # Notebook management
     # ------------------------------------------------------------------
 
-    @mcp.tool()
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            title="List notebooks",
+            read_only_hint=True,
+            open_world_hint=True,
+        )
+    )
     async def nb_list_notebooks(
         notebook_server_id: str,
         *,
         ctx: Context[Any, Any],
-    ) -> str:
+    ) -> Annotated[CallToolResult, NbProxyResult]:
         """List notebooks open on the notebook server."""
         return await _call_upstream(ctx, notebook_server_id, "list_notebooks", {})
 
-    @mcp.tool()
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            title="Use notebook",
+            read_only_hint=False,
+        )
+    )
     async def nb_use_notebook(
         notebook_server_id: str,
         notebook_name: str,
@@ -206,7 +251,7 @@ def register(mcp: MCPServer) -> None:
         kernel_id: str | None = None,
         *,
         ctx: Context[Any, Any],
-    ) -> str:
+    ) -> Annotated[CallToolResult, NbProxyResult]:
         """Connect to or create a notebook on the notebook server."""
         args: dict[str, Any] = {
             "notebook_name": notebook_name,
@@ -217,25 +262,36 @@ def register(mcp: MCPServer) -> None:
             args["kernel_id"] = kernel_id
         return await _call_upstream(ctx, notebook_server_id, "use_notebook", args)
 
-    @mcp.tool()
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            title="Unuse notebook",
+            read_only_hint=False,
+        )
+    )
     async def nb_unuse_notebook(
         notebook_server_id: str,
         notebook_name: str,
         *,
         ctx: Context[Any, Any],
-    ) -> str:
+    ) -> Annotated[CallToolResult, NbProxyResult]:
         """Disconnect from a notebook on the notebook server."""
         return await _call_upstream(
             ctx, notebook_server_id, "unuse_notebook", {"notebook_name": notebook_name}
         )
 
-    @mcp.tool()
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            title="Restart notebook",
+            read_only_hint=False,
+            destructive_hint=True,
+        )
+    )
     async def nb_restart_notebook(
         notebook_server_id: str,
         notebook_name: str,
         *,
         ctx: Context[Any, Any],
-    ) -> str:
+    ) -> Annotated[CallToolResult, NbProxyResult]:
         """Restart a notebook's kernel on the notebook server."""
         return await _call_upstream(
             ctx,
@@ -244,7 +300,13 @@ def register(mcp: MCPServer) -> None:
             {"notebook_name": notebook_name},
         )
 
-    @mcp.tool()
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            title="Read notebook",
+            read_only_hint=True,
+            open_world_hint=True,
+        )
+    )
     async def nb_read_notebook(
         notebook_server_id: str,
         notebook_name: str,
@@ -253,7 +315,7 @@ def register(mcp: MCPServer) -> None:
         limit: int = 20,
         *,
         ctx: Context[Any, Any],
-    ) -> str:
+    ) -> Annotated[CallToolResult, NbProxyResult]:
         """Read a notebook's cells from the notebook server."""
         return await _call_upstream(
             ctx,
@@ -271,7 +333,13 @@ def register(mcp: MCPServer) -> None:
     # Cell reading
     # ------------------------------------------------------------------
 
-    @mcp.tool()
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            title="Read cell",
+            read_only_hint=True,
+            open_world_hint=True,
+        )
+    )
     async def nb_read_cell(
         notebook_server_id: str,
         cell_index: int,
@@ -279,7 +347,7 @@ def register(mcp: MCPServer) -> None:
         notebook_name: str | None = None,
         *,
         ctx: Context[Any, Any],
-    ) -> str:
+    ) -> Annotated[CallToolResult, NbProxyResult]:
         """Read a cell from the active notebook on the notebook server."""
         args: dict[str, Any] = {
             "cell_index": cell_index,
@@ -293,7 +361,12 @@ def register(mcp: MCPServer) -> None:
     # Cell writing
     # ------------------------------------------------------------------
 
-    @mcp.tool()
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            title="Insert cell",
+            read_only_hint=False,
+        )
+    )
     async def nb_insert_cell(
         notebook_server_id: str,
         cell_index: int,
@@ -302,7 +375,7 @@ def register(mcp: MCPServer) -> None:
         notebook_name: str | None = None,
         *,
         ctx: Context[Any, Any],
-    ) -> str:
+    ) -> Annotated[CallToolResult, NbProxyResult]:
         """Insert a cell at a given index in the active notebook."""
         args: dict[str, Any] = {
             "cell_index": cell_index,
@@ -313,7 +386,13 @@ def register(mcp: MCPServer) -> None:
             args["notebook_name"] = notebook_name
         return await _call_upstream(ctx, notebook_server_id, "insert_cell", args)
 
-    @mcp.tool()
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            title="Overwrite cell source",
+            read_only_hint=False,
+            destructive_hint=True,
+        )
+    )
     async def nb_overwrite_cell_source(
         notebook_server_id: str,
         cell_index: int,
@@ -321,7 +400,7 @@ def register(mcp: MCPServer) -> None:
         notebook_name: str | None = None,
         *,
         ctx: Context[Any, Any],
-    ) -> str:
+    ) -> Annotated[CallToolResult, NbProxyResult]:
         """Overwrite the source of a cell in the active notebook."""
         args: dict[str, Any] = {
             "cell_index": cell_index,
@@ -333,7 +412,12 @@ def register(mcp: MCPServer) -> None:
             ctx, notebook_server_id, "overwrite_cell_source", args
         )
 
-    @mcp.tool()
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            title="Edit cell source",
+            read_only_hint=False,
+        )
+    )
     async def nb_edit_cell_source(
         notebook_server_id: str,
         cell_index: int,
@@ -343,7 +427,7 @@ def register(mcp: MCPServer) -> None:
         notebook_name: str | None = None,
         *,
         ctx: Context[Any, Any],
-    ) -> str:
+    ) -> Annotated[CallToolResult, NbProxyResult]:
         """Edit part of a cell's source in the active notebook."""
         args: dict[str, Any] = {
             "cell_index": cell_index,
@@ -355,7 +439,13 @@ def register(mcp: MCPServer) -> None:
             args["notebook_name"] = notebook_name
         return await _call_upstream(ctx, notebook_server_id, "edit_cell_source", args)
 
-    @mcp.tool()
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            title="Delete cell",
+            read_only_hint=False,
+            destructive_hint=True,
+        )
+    )
     async def nb_delete_cell(
         notebook_server_id: str,
         cell_indices: list[int],
@@ -363,7 +453,7 @@ def register(mcp: MCPServer) -> None:
         notebook_name: str | None = None,
         *,
         ctx: Context[Any, Any],
-    ) -> str:
+    ) -> Annotated[CallToolResult, NbProxyResult]:
         """Delete one or more cells from the active notebook."""
         args: dict[str, Any] = {
             "cell_indices": cell_indices,
@@ -373,7 +463,12 @@ def register(mcp: MCPServer) -> None:
             args["notebook_name"] = notebook_name
         return await _call_upstream(ctx, notebook_server_id, "delete_cell", args)
 
-    @mcp.tool()
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            title="Move cell",
+            read_only_hint=False,
+        )
+    )
     async def nb_move_cell(
         notebook_server_id: str,
         source_index: int,
@@ -381,7 +476,7 @@ def register(mcp: MCPServer) -> None:
         notebook_name: str | None = None,
         *,
         ctx: Context[Any, Any],
-    ) -> str:
+    ) -> Annotated[CallToolResult, NbProxyResult]:
         """Move a cell to a different index in the active notebook."""
         args: dict[str, Any] = {
             "source_index": source_index,
@@ -395,7 +490,13 @@ def register(mcp: MCPServer) -> None:
     # Cell execution
     # ------------------------------------------------------------------
 
-    @mcp.tool()
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            title="Execute cell",
+            read_only_hint=False,
+            destructive_hint=True,
+        )
+    )
     async def nb_execute_cell(
         notebook_server_id: str,
         cell_index: int,
@@ -404,7 +505,7 @@ def register(mcp: MCPServer) -> None:
         progress_interval: int = 5,
         *,
         ctx: Context[Any, Any],
-    ) -> str:
+    ) -> Annotated[CallToolResult, NbProxyResult]:
         """Execute a specific cell in the active notebook."""
         return await _call_upstream(
             ctx,
@@ -418,7 +519,13 @@ def register(mcp: MCPServer) -> None:
             },
         )
 
-    @mcp.tool()
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            title="Insert and execute code cell",
+            read_only_hint=False,
+            destructive_hint=True,
+        )
+    )
     async def nb_insert_execute_code_cell(
         notebook_server_id: str,
         cell_index: int,
@@ -428,7 +535,7 @@ def register(mcp: MCPServer) -> None:
         progress_interval: int = 5,
         *,
         ctx: Context[Any, Any],
-    ) -> str:
+    ) -> Annotated[CallToolResult, NbProxyResult]:
         """Insert a code cell and immediately execute it in the active notebook."""
         return await _call_upstream(
             ctx,
@@ -447,7 +554,13 @@ def register(mcp: MCPServer) -> None:
     # Other tools
     # ------------------------------------------------------------------
 
-    @mcp.tool()
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            title="Execute code",
+            read_only_hint=False,
+            destructive_hint=True,
+        )
+    )
     async def nb_execute_code(
         notebook_server_id: str,
         code: str,
@@ -456,7 +569,7 @@ def register(mcp: MCPServer) -> None:
         progress_interval: int = 5,
         *,
         ctx: Context[Any, Any],
-    ) -> str:
+    ) -> Annotated[CallToolResult, NbProxyResult]:
         """Execute arbitrary code in the notebook server's kernel."""
         args: dict[str, Any] = {
             "code": code,

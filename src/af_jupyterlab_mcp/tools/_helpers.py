@@ -4,16 +4,22 @@ from __future__ import annotations
 
 from typing import Any
 
+from mcp.types import CallToolResult, TextContent
+
 
 def format_error(
     exc: Exception,
     context: str = "",
     hints: list[str] | None = None,
-) -> str:
-    """Format an error with optional context and recovery hints.
+) -> CallToolResult:
+    """Format *exc* as an LLM-facing ``is_error`` result, never raising.
 
     Mirrors ami-mcp's ``tools._helpers.format_error`` -- errors are always
-    returned as formatted strings, never raised as bare exceptions to the LLM.
+    returned as an ``is_error`` result, never raised as a bare exception to
+    the LLM. No ``structured_content`` is set: an error result carries no
+    structured payload (mcp SDK's ``convert_result`` only validates
+    ``structured_content`` against the tool's output model when ``is_error``
+    is false).
     """
     lines = [f"**Error**: {exc}"]
     if context:
@@ -21,7 +27,8 @@ def format_error(
     if hints:
         lines.append("\n**Try:**")
         lines.extend(f"- {h}" for h in hints)
-    return "\n".join(lines)
+    text = "\n".join(lines)
+    return CallToolResult(content=[TextContent(type="text", text=text)], is_error=True)
 
 
 def append_next_actions(output: str, hints: list[str]) -> str:
