@@ -12,18 +12,19 @@ LLM <--MCP/HTTP--> af-mcp-platform aggregator <--Bearer: broker JWT--> af-jupyte
 ```
 
 **Design philosophy**: unlike ami-mcp (which exposes a query DSL and lets the
-LLM be expressive), this backend exposes six fixed, typed tools over Kubernetes
-Pod/Service/Secret/Ingress objects. There is no raw-k8s-manifest escape hatch:
-the value here is the AF-specific policy layered on top (guardrail validation,
-dual-writer safety, owner-scoping), not a thin pass-through to the Kubernetes
-API.
+LLM be expressive), this backend exposes fixed, typed tools over Kubernetes
+Pod/Service/Secret/Ingress objects and the notebook's own jupyter-mcp-server.
+There is no raw-k8s-manifest escape hatch: the value here is the AF-specific
+policy layered on top (guardrail validation, dual-writer safety, owner-scoping),
+not a thin pass-through to the Kubernetes API.
 
-Phase 1 (this repo, today) is the six CRD-management tools only. Phase 2
-(tracked in
-[maniaclab/af-mcp-platform#189](https://github.com/maniaclab/af-mcp-platform/issues/189),
-not built here) adds a typed proxy to the Datalayer `jupyter-mcp-server` running
-inside the notebook itself, so a session can drive code execution inside the
-user's own notebook without the notebook token ever entering LLM context.
+Six CRD-management tools create/inspect/delete the pod+service+secret+ingress
+quadruple (`tools/jupyterlab.py`). Sixteen `nb_*` tools (`tools/nb_proxy.py`,
+tracked in
+[maniaclab/af-mcp-platform#189](https://github.com/maniaclab/af-mcp-platform/issues/189))
+proxy to the Datalayer `jupyter-mcp-server` running inside the notebook itself,
+so a session can drive code execution inside the user's own notebook without the
+notebook token ever entering LLM context.
 
 ## Project layout
 
