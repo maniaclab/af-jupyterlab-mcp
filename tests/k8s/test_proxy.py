@@ -5,6 +5,7 @@ All upstream MCP calls are mocked -- no real notebook is contacted.
 
 from __future__ import annotations
 
+import sys
 from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -17,6 +18,11 @@ from af_jupyterlab_mcp.k8s.proxy import (
     NotebookToolUpstreamError,
     call_notebook_tool,
 )
+
+if sys.version_info >= (3, 11):
+    _ExceptionGroup = ExceptionGroup  # noqa: F821 -- builtin since 3.11
+else:
+    from exceptiongroup import ExceptionGroup as _ExceptionGroup
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
@@ -223,6 +229,42 @@ class TestCallNotebookTool:
                 return_value=fake_session_ctx(),
             ),
             pytest.raises(NotebookToolTransportError, match="unreachable"),
+        ):
+            await call_notebook_tool(
+                notebook_url="https://nb-alice-1.notebooks.af.uchicago.edu",
+                token="tok",
+                tool_name="execute_code",
+                tool_args={},
+            )
+
+    async def test_unwraps_exception_group_to_the_real_cause(self) -> None:
+        """anyio's TaskGroup wraps every transport failure in an ExceptionGroup
+        whose str() is the uninformative "unhandled errors in a TaskGroup
+        (1 sub-exception)" -- the actual leaf exception must survive into the
+        raised NotebookToolTransportError's message (regression: #8)."""
+        mock_session = AsyncMock()
+        mock_session.initialize = AsyncMock(
+            side_effect=_ExceptionGroup(
+                "unhandled errors in a TaskGroup",
+                [ConnectionError("Connection refused")],
+            )
+        )
+
+        @asynccontextmanager
+        async def fake_transport(_url: str, **_kwargs: Any):
+            yield (AsyncMock(), AsyncMock())
+
+        @asynccontextmanager
+        async def fake_session_ctx(*_args: Any, **_kwargs: Any):
+            yield mock_session
+
+        with (
+            patch("af_jupyterlab_mcp.k8s.proxy.streamable_http_client", fake_transport),
+            patch(
+                "af_jupyterlab_mcp.k8s.proxy.ClientSession",
+                return_value=fake_session_ctx(),
+            ),
+            pytest.raises(NotebookToolTransportError, match="Connection refused"),
         ):
             await call_notebook_tool(
                 notebook_url="https://nb-alice-1.notebooks.af.uchicago.edu",

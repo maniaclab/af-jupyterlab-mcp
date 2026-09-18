@@ -17,10 +17,31 @@ handshake (initialize + tools/call). jupyter-mcp-server runs with
 
 from __future__ import annotations
 
+import sys
 import urllib.parse
 
 from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamable_http_client
+
+if sys.version_info >= (3, 11):
+    _BaseExceptionGroup = BaseExceptionGroup  # noqa: F821 -- builtin since 3.11
+else:
+    from exceptiongroup import BaseExceptionGroup as _BaseExceptionGroup
+
+
+def _describe_exception(exc: BaseException) -> str:
+    """Return a one-line ``Type: message`` description of *exc*.
+
+    anyio's ``TaskGroup`` (used internally by ``streamable_http_client`` and
+    ``ClientSession``) wraps every failure -- connection errors, HTTP status
+    errors, protocol errors -- in a ``BaseExceptionGroup``, whose own
+    ``str()`` is the uninformative "unhandled errors in a TaskGroup
+    (N sub-exceptions)". Recursing into ``.exceptions`` surfaces the real
+    leaf failure(s) instead.
+    """
+    if isinstance(exc, _BaseExceptionGroup):
+        return "; ".join(_describe_exception(sub) for sub in exc.exceptions)
+    return f"{type(exc).__name__}: {exc}"
 
 
 class NotebookToolTransportError(RuntimeError):
@@ -65,7 +86,7 @@ async def call_notebook_tool(
             await session.initialize()
             result = await session.call_tool(tool_name, tool_args)
     except Exception as exc:
-        raise NotebookToolTransportError(str(exc)) from exc
+        raise NotebookToolTransportError(_describe_exception(exc)) from exc
 
     # Extract text from the result content blocks.
     texts = [c.text for c in result.content if hasattr(c, "text")]

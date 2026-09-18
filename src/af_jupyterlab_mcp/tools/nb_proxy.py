@@ -570,7 +570,13 @@ def register(mcp: MCPServer) -> None:
         *,
         ctx: Context[Any, Any],
     ) -> Annotated[CallToolResult, NbProxyResult]:
-        """Execute arbitrary code in the notebook server's kernel."""
+        """Execute arbitrary code in the notebook server's kernel.
+
+        kernel_id is optional -- omitted, jupyter-mcp-server reuses the
+        current notebook's kernel or starts a new one on demand, so no prior
+        step is required. Use nb_list_kernels to see what kernels currently
+        exist on the server.
+        """
         args: dict[str, Any] = {
             "code": code,
             "timeout": timeout,
