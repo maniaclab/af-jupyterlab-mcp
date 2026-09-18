@@ -47,7 +47,7 @@ repos:
         args: []
         additional_dependencies:
           - pytest
-          - mcp==2.0.0
+          - mcp==2.2.0
           - kubernetes
           - types-PyYAML
           - jinja2
