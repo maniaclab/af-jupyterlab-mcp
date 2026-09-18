@@ -397,6 +397,19 @@ class TestGetJupyterServerNoIncludeUrl:
             "include_url must be removed from get_jupyter_server — the token must never transit LLM context"
         )
 
+    def test_no_tool_docstring_mentions_include_url(self) -> None:
+        """No tool description may reference include_url -- it is a k8s-layer-only
+        knob the tool layer always hardcodes to False, so advertising it as a
+        user-facing option (regression: #9) misleads callers into passing an
+        argument no tool accepts."""
+        mcp = MCPServer("test")
+        register(mcp)
+        for tool in mcp._tool_manager.list_tools():
+            assert "include_url" not in (tool.description or ""), (
+                f"{tool.name}'s description references include_url, "
+                "which is not a tool-layer parameter"
+            )
+
     async def test_no_tokenized_url_in_get_response(
         self,
         registered_tools: dict[str, Callable[..., Awaitable[CallToolResult]]],
