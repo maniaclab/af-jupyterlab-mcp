@@ -47,7 +47,7 @@ src/af_jupyterlab_mcp/
     ├── _helpers.py          # format_error(), append_next_actions(), format_notebook[_list]()
     └── jupyterlab.py         # the six @mcp.tool() functions
 tests/
-├── conftest.py (none needed yet -- fixtures live per-module)
+├── conftest.py               # shared tool_text() fixture (unwraps CallToolResult.content[0].text)
 ├── auth/test_broker.py       # bearer extraction + claims retrieval
 ├── k8s/
 │   ├── fakes.py                # in-memory kubernetes client stand-in (no cluster access needed)
@@ -63,9 +63,68 @@ tests/
 
 ## Tool registration pattern
 
-Mirrors ami-mcp: a single `register(mcp: MCPServer) -> None` in
-`tools/jupyterlab.py` defines all six `@mcp.tool()` closures. `server.py` calls
-`jupyterlab_tools.register(mcp)`.
+Mirrors ami-mcp/af-filesystem-mcp: a `register(mcp: MCPServer) -> None` per
+module (`tools/jupyterlab.py`'s six CRD-management tools, `tools/nb_proxy.py`'s
+16 `nb_*` proxy tools) defines all `@mcp.tool()` closures. `server.py`'s
+`_register_all` calls both.
+
+Every tool returns markdown _and_ structured content:
+`CallToolResult(content=[...], structured_content=...)`, with the return
+annotation spelled `Annotated[CallToolResult, ResultModel]`. This is the escape
+hatch the mcp SDK's `func_metadata()` provides specifically for this case (see
+`mcp/server/mcpserver/utilities/func_metadata.py`): annotating a tool
+`-> ResultModel` directly gets you `outputSchema` + `structuredContent`, but the
+SDK then renders the text block as `pydantic_core.to_json(result, indent=2)`,
+destroying the curated markdown. `Annotated[CallToolResult, ResultModel]`
+publishes `outputSchema` from `ResultModel`, validates `structured_content`
+against it at runtime, and returns the `CallToolResult` — markdown text block
+and all — unchanged.
+
+```python
+# tools/mymodule.py
+from __future__ import annotations
+
+from typing import Annotated, Any
+
+from mcp.server.mcpserver import Context, MCPServer  # noqa: TC002 (needed at runtime for eval_str signature introspection)
+from mcp.types import CallToolResult, TextContent, ToolAnnotations
+from pydantic import BaseModel
+
+from af_jupyterlab_mcp.tools._helpers import append_next_actions, format_error
+
+
+class MyToolResult(BaseModel):
+    """Structured result of my_tool."""
+
+    id: str
+    # ... the rest of the fields the underlying call actually returns
+
+
+def register(mcp: MCPServer) -> None:
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            title="My tool",
+            read_only_hint=True,
+            open_world_hint=True,
+        )
+    )
+    async def my_tool(
+        name: str,
+        *,
+        ctx: Context[Any, Any],
+    ) -> Annotated[CallToolResult, MyToolResult]:
+        """Tool description -- shown to the LLM as the tool's purpose."""
+        try:
+            result = await do_the_thing(ctx, name)
+        except Exception as exc:  # noqa: BLE001
+            return format_error(exc, hints=["..."])
+        text = append_next_actions(str(result), ["..."])
+        payload = MyToolResult(id=result["id"])
+        return CallToolResult(
+            content=[TextContent(type="text", text=text)],
+            structured_content=payload.model_dump(mode="json"),
+        )
+```
 
 Key conventions:
 
@@ -74,8 +133,38 @@ Key conventions:
   owner/username argument, ever.
 - `ctx` is keyword-only (after `*`) so optional parameters can have defaults
   before it.
-- Errors are returned via `format_error(exc, hints=[...])` — never raised as
-  bare exceptions to the LLM.
+- `Context`/`MCPServer`/`CallToolResult`/`TextContent`/`ToolAnnotations` and
+  every result model used in a return annotation must be imported as **real,
+  non-`TYPE_CHECKING`** imports (with a `# noqa: TC002` on the
+  `mcp.server.mcpserver` import to satisfy ruff's type-checking-import lint) —
+  the mcp SDK's `func_metadata()` calls
+  `inspect.signature(func, eval_str=True)`, which needs every name in the
+  signature to actually resolve in the function's module globals at _runtime_,
+  not just for static type checking. Getting this wrong raises
+  `InvalidSignature: Unable to evaluate type annotations` the moment the tool is
+  registered.
+- Annotations follow the read-only/mutating/destructive split: read-only tools
+  get `read_only_hint=True` (`open_world_hint=True` for everything in this repo
+  — every tool reaches external k8s or jupyter-mcp-server state); mutating
+  non-destructive tools get `read_only_hint=False` with `destructive_hint` left
+  unset; destructive tools (including the three arbitrary-code-execution `nb_*`
+  tools — "execute" isn't literally a delete, but they can mutate anything the
+  kernel can reach) get `read_only_hint=False, destructive_hint=True`.
+  `idempotent_hint` stays unset everywhere — the spec says these hints are only
+  meaningful when `read_only_hint` is false.
+- Errors are returned via `format_error(exc, hints=[...])`, which itself returns
+  a `CallToolResult(is_error=True)` — never raised, never a bare
+  `f"Error: {exc}"` string, and never a plain error `CallToolResult` built by
+  hand at a tool's own call site.
+- `tools/nb_proxy.py`'s 16 tools proxy to jupyter-mcp-server, which returns
+  markdown/plain text for every tool, not structured data — there is nothing
+  further to extract without coupling to its undocumented text format, so all 16
+  share one minimal wrapper model, `NbProxyResult({"result": <str>})`, via the
+  shared `_call_upstream` helper. `_get_ready_pod_and_token` and
+  `call_notebook_tool` raise typed exceptions
+  (`NotFoundOrNotYoursError`/`NotebookNotReadyError`/
+  `NotebookToolTransportError`/`NotebookToolUpstreamError`) on failure — never
+  return a plain error string a caller has to `isinstance`-sniff.
 - All `kubernetes` client calls are blocking (the SDK has no asyncio support),
   so every k8s-layer call from a tool goes through `asyncio.to_thread(...)` to
   keep the MCP event loop responsive.
@@ -165,13 +254,27 @@ Two distinct grants, both templated in `charts/af-jupyterlab-mcp/templates/`:
 
 ## Adding a new tool
 
-1. Add a new `@mcp.tool()` function inside `tools/jupyterlab.py`'s `register()`
-   (or a new module + `server.py` registration loop entry, if it doesn't belong
-   with the CRD tools).
-2. Any new k8s call belongs in `k8s/notebooks.py` or a new `k8s/*.py` module
+1. Add a new `@mcp.tool(annotations=ToolAnnotations(...))` function inside
+   `tools/jupyterlab.py`'s or `tools/nb_proxy.py`'s `register()` (or a new
+   module + `server.py`'s `_register_all` entry, if it doesn't belong with
+   either existing group).
+2. Define a pydantic `BaseModel` for the tool's structured result and spell the
+   return annotation `Annotated[CallToolResult, ResultModel]`; return
+   `CallToolResult(content=[TextContent(...)], structured_content=...)` per the
+   "Tool registration pattern" section above. Assign `ToolAnnotations` per the
+   read-only/mutating/destructive split.
+3. Any new k8s call belongs in `k8s/notebooks.py` or a new `k8s/*.py` module
    taking `K8sClients` as its first argument — never call `kubernetes.client`
    directly from `tools/`.
-3. Write unit tests using `tests/k8s/fakes.py`'s `FakeCoreV1Api` /
+4. Write unit tests using `tests/k8s/fakes.py`'s `FakeCoreV1Api` /
    `FakeNetworkingV1Api` — no cluster access is available or expected in this
-   test suite.
-4. Run `pixi run test` and `pixi run lint` to verify.
+   test suite. Use the `tool_text` fixture (`tests/conftest.py`) to unwrap
+   `CallToolResult.content[0].text` for markdown substring assertions, and
+   assert on `result.structured_content`/`result.is_error` directly for the
+   structured/error paths.
+5. Add the new tool's name to the appropriate bucket in
+   `TestAnnotationsAndOutputSchema`/`TestNbProxyAnnotationsAndOutputSchema`
+   (per-module) and confirm `tests/test_server.py`'s
+   `TestEveryToolDeclaresAnnotationsAndOutputSchema` tool-count assertion is
+   updated to match.
+6. Run `pixi run test` and `pixi run lint` to verify.
