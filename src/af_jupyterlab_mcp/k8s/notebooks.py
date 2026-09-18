@@ -141,14 +141,15 @@ def create_notebook(
     ``owner``/``owner_uid`` must come from verified broker JWT claims, never
     from caller-supplied arguments (enforced by the tool layer). The token is
     written to both the pod's JUPYTER_TOKEN env var and a per-notebook
-    Secret. This backend's own ``get_jupyter_server(include_url=True)`` reads
+    Secret. This module's own ``get_notebook(include_url=True)`` reads
     the pod env var, never the Secret -- the Secret exists solely because
     af-portal (the other writer in the dual-writer contract) builds its own
     browser-viewable notebook URL via ``read_namespaced_secret``, never the
     pod env var, and 404s (silently, on the portal side) if the Secret is
     missing. Returns a dict describing the created notebook -- deliberately
     never the token or a tokenized URL (see
-    ``get_jupyter_server(include_url=True)`` for that).
+    ``get_notebook(include_url=True)`` for that; the tool layer never sets
+    ``include_url=True``, so this is unreachable from the MCP surface).
 
     Raises:
         GuardrailError / ImageNotAllowedError: a server-side guardrail failed.

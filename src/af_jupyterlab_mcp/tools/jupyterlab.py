@@ -147,9 +147,9 @@ def register(mcp: MCPServer) -> None:
         """Create a per-user JupyterLab server (pod+service+secret+ingress).
 
         The server is always owned by the caller (from their verified broker
-        identity) -- there is no owner argument. Does not return the
-        notebook token or URL; use get_jupyter_server(include_url=True) to
-        opt in to that (it is your own credential).
+        identity) -- there is no owner argument. The tokenized notebook URL
+        is never returned; use the portal to access the notebook in a
+        browser.
         """
         try:
             verifier, clients, settings = _lifespan(ctx)
