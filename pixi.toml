@@ -29,6 +29,7 @@ mcp = ">=2.0.0,<3"
 python-kubernetes = ">=30"
 jinja2 = ">=3.1"
 pyyaml = ">=6"
+af-credentials = ">=0.2.0"
 
 [feature.py310.dependencies]
 python = "<3.11,>=3.10"
@@ -84,6 +85,7 @@ check-docstrings = { cmd = "pydocstyle --add-ignore=D104,D105,D107 src/af_jupyte
 prek = "*"
 identify = ">=1.4.20"
 pylint = ">=3.2"
+tbump = ">=6.7.0"
 mypy = "*"
 ruff = "*"
 python-build = "*"
