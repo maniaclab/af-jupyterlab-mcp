@@ -10,9 +10,9 @@ icon: lucide/code
 LLM <--MCP/HTTP--> af-mcp-platform aggregator <--Bearer: broker JWT--> af-jupyterlab-mcp <--k8s API--> notebook namespace
 ```
 
-`af-jupyterlab-mcp` exposes six fixed, typed tools over Kubernetes
-Pod/Service/Secret/Ingress objects for per-user JupyterLab servers on the
-UChicago ATLAS Analysis Facility cluster — the same notebooks
+`af-jupyterlab-mcp` exposes fixed, typed tools in three groups. Six manage
+Kubernetes Pod/Service/Secret/Ingress objects for per-user JupyterLab servers on
+the UChicago ATLAS Analysis Facility cluster — the same notebooks
 [af-portal](https://github.com/maniaclab/af-portal) deploys today:
 
 - `create_jupyter_server`
@@ -21,6 +21,12 @@ UChicago ATLAS Analysis Facility cluster — the same notebooks
 - `delete_jupyter_server`
 - `get_gpu_availability`
 - `list_supported_images`
+
+The other two groups proxy into the running notebook: `nb_*` tools
+(`tools/nb_proxy.py`) call the notebook's own `jupyter-mcp-server`, and
+`nb_ui_*` tools (`tools/nb_ui.py`) run JupyterLab frontend commands in the
+user's open tab via `jupyter-mcp-tools`. See the [tool surface](index.md) for
+the full list.
 
 Unlike ami-mcp (which exposes a query DSL and lets the LLM be expressive), there
 is no raw-k8s-manifest escape hatch here: the value is the AF-specific policy
