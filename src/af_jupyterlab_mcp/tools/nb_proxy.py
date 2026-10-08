@@ -13,11 +13,9 @@ Each tool here mirrors one tool from jupyter-mcp-server
 Tool signatures are copied from jupyter-mcp-server v2.x source; see
 https://github.com/datalayer/jupyter-mcp-server/tree/main/jupyter_mcp_server/tools
 
-Not included: ``notebook_get-selected-cell`` and ``notebook_run-all-cells``.
-These are served by the ``jupyter-mcp-tools`` JupyterLab frontend extension,
-which is not installed in the current notebook images. They will be added here
-once ``jupyter-mcp-tools`` is available in the image (cross-reference:
-maniaclab/ml_platform issue TBD).
+The JupyterLab frontend commands served by the ``jupyter-mcp-tools``
+extension (``notebook_get-selected-cell``, ``notebook_run-all-cells``, ...)
+are proxied separately as ``nb_ui_*`` tools in ``nb_ui.py``.
 """
 
 from __future__ import annotations
@@ -650,9 +648,3 @@ def register(mcp: MCPServer) -> None:
         if kernel_id is not None:
             args["kernel_id"] = kernel_id
         return await _call_upstream(ctx, notebook_server_id, "execute_code", args)
-
-    # nb_get_selected_cell and nb_run_all_cells are intentionally absent.
-    # They are served by the ``jupyter-mcp-tools`` JupyterLab frontend extension,
-    # which is not installed in the current notebook images. They will be added
-    # here once ``jupyter-mcp-tools`` is available in the image (cross-reference:
-    # maniaclab/ml_platform issue TBD).

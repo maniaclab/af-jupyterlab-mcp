@@ -121,9 +121,8 @@ class TestNbProxyContextInjection:
     def test_all_17_tools_are_registered(self) -> None:
         """Exactly 17 nb_* tools must be registered.
 
-        nb_get_selected_cell and nb_run_all_cells are excluded because they
-        require the jupyter-mcp-tools JupyterLab extension which is not
-        installed in the current notebook images.
+        The jupyter-mcp-tools frontend commands (get-selected-cell,
+        run-all-cells, ...) live in nb_ui.py as nb_ui_* tools, not here.
         """
         mcp = MCPServer("test")
         nb_proxy_mod.register(mcp)
