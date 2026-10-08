@@ -54,14 +54,14 @@ class TestEveryToolDeclaresAnnotationsAndOutputSchema:
     This is the one test that would catch a future tool being added (or an
     existing one refactored) without following the
     ``Annotated[CallToolResult, Model]`` + ``ToolAnnotations`` pattern all
-    22 tools use today -- see CLAUDE.md's "Tool registration pattern".
+    23 tools use today -- see CLAUDE.md's "Tool registration pattern".
     """
 
     def test_every_tool_declares_annotations_and_output_schema(self) -> None:
         mcp = MCPServer("test")
         _register_all(mcp)
         tools = mcp._tool_manager.list_tools()
-        assert len(tools) == 22, [t.name for t in tools]
+        assert len(tools) == 23, [t.name for t in tools]
         for tool in tools:
             assert tool.annotations is not None, tool.name
             assert tool.annotations.read_only_hint is not None, tool.name
@@ -181,7 +181,7 @@ class TestToolsOverTheWire:
         )
         assert resp.status_code == 200
         tools = {tool["name"]: tool for tool in resp.json()["result"]["tools"]}
-        assert len(tools) == 22
+        assert len(tools) == 23
         for tool in tools.values():
             assert tool["annotations"]["readOnlyHint"] is not None
             assert tool["outputSchema"] is not None

@@ -1,4 +1,4 @@
-"""Tests for the 16 nb_* proxy tools in nb_proxy.py.
+"""Tests for the 17 nb_* proxy tools in nb_proxy.py.
 
 These tests verify:
 1. Each proxy tool enforces ownership (pod owner label matches caller).
@@ -118,8 +118,8 @@ class TestNbProxyContextInjection:
                 f"Tool '{tool.name}' exposes 'ctx' as a user-facing parameter."
             )
 
-    def test_all_16_tools_are_registered(self) -> None:
-        """Exactly 16 nb_* tools must be registered.
+    def test_all_17_tools_are_registered(self) -> None:
+        """Exactly 17 nb_* tools must be registered.
 
         nb_get_selected_cell and nb_run_all_cells are excluded because they
         require the jupyter-mcp-tools JupyterLab extension which is not
@@ -128,7 +128,7 @@ class TestNbProxyContextInjection:
         mcp = MCPServer("test")
         nb_proxy_mod.register(mcp)
         names = [t.name for t in mcp._tool_manager.list_tools()]
-        assert len(names) == 16, f"Expected 16 tools, got {len(names)}: {names}"
+        assert len(names) == 17, f"Expected 17 tools, got {len(names)}: {names}"
         assert "nb_get_selected_cell" not in names
         assert "nb_run_all_cells" not in names
 
@@ -179,6 +179,7 @@ class TestNbProxyAnnotationsAndOutputSchema:
         "nb_execute_cell",
         "nb_insert_execute_code_cell",
         "nb_execute_code",
+        "nb_clear_cell_output",
     }
 
     def test_every_tool_declares_annotations_and_output_schema(self) -> None:
@@ -189,9 +190,9 @@ class TestNbProxyAnnotationsAndOutputSchema:
             assert tool.annotations.read_only_hint is not None, tool.name
             assert tool.output_schema is not None, tool.name
 
-    def test_buckets_cover_all_16_tools_with_no_overlap(self) -> None:
+    def test_buckets_cover_all_17_tools_with_no_overlap(self) -> None:
         all_buckets = self._READ_ONLY | self._MUTATING | self._DESTRUCTIVE
-        assert len(all_buckets) == 16
+        assert len(all_buckets) == 17
         assert not (self._READ_ONLY & self._MUTATING)
         assert not (self._READ_ONLY & self._DESTRUCTIVE)
         assert not (self._MUTATING & self._DESTRUCTIVE)
@@ -479,3 +480,130 @@ class TestCallUpstreamErrorFormatting:
         assert "**Error**" in output
         assert "kernel not found" in output
         assert result.is_error is True
+
+
+# ---------------------------------------------------------------------------
+# Tests: jupyter-mcp-server 2.x cell-id addressing and nb_clear_cell_output
+# ---------------------------------------------------------------------------
+
+
+async def _ready_notebook_ctx(settings: Settings) -> MagicMock:
+    """Create alice-notebook-1 owned by alice and mark its pod Ready."""
+    ctx, core = _make_base_ctx(settings=settings)
+    jtools = _jlab_tools_dict()
+    await jtools["create_jupyter_server"](
+        image=_IMAGE, name="alice-notebook-1", ctx=ctx
+    )
+    pod = core.pods[("jupyterlab", "alice-notebook-1")]
+    pod.status.conditions = [MagicMock(type="Ready", status="True")]
+    return ctx
+
+
+class TestNbProxyForwardsUpstreamArgs:
+    """Each tool forwards exactly the jupyter-mcp-server 2.x arguments it was given.
+
+    Optional upstream arguments (``cell_index``, ``cell_id``, ``notebook_name``,
+    ...) are only forwarded when set, so upstream applies its own defaults and
+    its own "given both, the id wins" resolution.
+    """
+
+    @pytest.mark.parametrize(
+        ("tool", "call_args", "upstream", "expected_args"),
+        [
+            pytest.param(
+                "nb_read_cell",
+                {"cell_index": 3},
+                "read_cell",
+                {"cell_index": 3, "include_outputs": True},
+                id="read_cell-by-index",
+            ),
+            pytest.param(
+                "nb_read_cell",
+                {"cell_id": "abc"},
+                "read_cell",
+                {"include_outputs": True, "cell_id": "abc"},
+                id="read_cell-by-id",
+            ),
+            pytest.param(
+                "nb_overwrite_cell_source",
+                {"cell_source": "x = 1", "cell_id": "abc"},
+                "overwrite_cell_source",
+                {"cell_source": "x = 1", "cell_id": "abc"},
+                id="overwrite_cell_source-by-id",
+            ),
+            pytest.param(
+                "nb_edit_cell_source",
+                {"old_string": "a", "new_string": "b", "cell_id": "abc"},
+                "edit_cell_source",
+                {
+                    "old_string": "a",
+                    "new_string": "b",
+                    "replace_all": False,
+                    "cell_id": "abc",
+                },
+                id="edit_cell_source-by-id",
+            ),
+            pytest.param(
+                "nb_delete_cell",
+                {"cell_ids_to_delete": ["abc", "def"]},
+                "delete_cell",
+                {"include_source": True, "cell_ids_to_delete": ["abc", "def"]},
+                id="delete_cell-by-ids",
+            ),
+            pytest.param(
+                "nb_move_cell",
+                {"source_cell_id": "abc", "target_cell_id": "def"},
+                "move_cell",
+                {"source_cell_id": "abc", "target_cell_id": "def"},
+                id="move_cell-by-ids",
+            ),
+            pytest.param(
+                "nb_execute_cell",
+                {"cell_id": "abc"},
+                "execute_cell",
+                {
+                    "timeout": 0,
+                    "stream": True,
+                    "progress_interval": 5,
+                    "cell_id": "abc",
+                },
+                id="execute_cell-by-id",
+            ),
+            pytest.param(
+                "nb_clear_cell_output",
+                {"cell_index": 2, "notebook_name": "analysis"},
+                "clear_cell_output",
+                {"cell_index": 2, "notebook_name": "analysis"},
+                id="clear_cell_output-by-index",
+            ),
+            pytest.param(
+                "nb_clear_cell_output",
+                {"cell_id": "abc"},
+                "clear_cell_output",
+                {"cell_id": "abc"},
+                id="clear_cell_output-by-id",
+            ),
+        ],
+    )
+    async def test_forwards_args(
+        self,
+        registered_nb_tools: dict[str, Callable[..., Awaitable[CallToolResult]]],
+        settings: Settings,
+        tool: str,
+        call_args: dict[str, object],
+        upstream: str,
+        expected_args: dict[str, object],
+    ) -> None:
+        ctx = await _ready_notebook_ctx(settings)
+        with patch(
+            "af_jupyterlab_mcp.tools.nb_proxy.call_notebook_tool",
+            new=AsyncMock(return_value="ok"),
+        ) as mock_call:
+            result = await registered_nb_tools[tool](
+                notebook_server_id="alice-notebook-1", **call_args, ctx=ctx
+            )
+
+        assert result.is_error is not True
+        kwargs = mock_call.call_args.kwargs
+        assert kwargs["tool_name"] == upstream
+        assert kwargs["tool_args"] == expected_args
