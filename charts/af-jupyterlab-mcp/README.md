@@ -68,6 +68,10 @@ wire them up out-of-band.
 - `notebook.images.cpu` / `notebook.images.gpu`: the image allowlist
   `create_jupyter_server` enforces server-side. Bumping an image is a values
   change, not a release.
+- `notebook.images.toolOverrides`: per-image tool support for the `nb_*` /
+  `nb_ui_*` proxy tools, keyed by exact image string, listing the upstream
+  jupyter-mcp-server tool ids that image offers. Images without an entry are
+  assumed to support every tool; an empty list means none.
 - `notebook.quotas.maxServersPerUser` / `maxGpusPerRequest`: unset (empty
   string) by default -- no default quota, per af-mcp-platform#189 decision 4.
   The CPU/memory/duration RANGE guardrails (1-16 cores, 1-256Gi, 1-72h) are NOT

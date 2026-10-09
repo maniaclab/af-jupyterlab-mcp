@@ -10,12 +10,19 @@ ClusterRole in ``charts/af-jupyterlab-mcp/templates/clusterrole.yaml``.
 from __future__ import annotations
 
 import math
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
-from kubernetes.utils.quantity import parse_quantity
+from kubernetes.utils.quantity import parse_quantity as _untyped_parse_quantity
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from af_jupyterlab_mcp.k8s.notebooks import K8sClients
+
+# kubernetes' parse_quantity is unannotated (it returns a Decimal); this typed
+# alias lets strict mypy check our call sites instead of rejecting them.
+_parse_quantity: Callable[[object], Decimal] = _untyped_parse_quantity
 
 _SUCCEEDED = "Succeeded"
 _FAILED = "Failed"
@@ -66,8 +73,8 @@ def get_gpu_availability(
         pods = api.list_pod_for_all_namespaces(
             field_selector=f"spec.nodeName={node.metadata.name},status.phase!={_SUCCEEDED},status.phase!={_FAILED}"
         ).items
-        mem_request = 0
-        cpu_request = 0
+        mem_request = Decimal(0)
+        cpu_request = Decimal(0)
         gpu_request = 0
         for pod in pods:
             for container in pod.spec.containers:
@@ -75,19 +82,19 @@ def get_gpu_availability(
                 if requests:
                     gpu["total_requests"] += int(requests.get("nvidia.com/gpu", 0))
                     gpu_request += int(requests.get("nvidia.com/gpu", 0))
-                    mem_request += parse_quantity(requests.get("memory", 0))
-                    cpu_request += parse_quantity(requests.get("cpu", 0))
+                    mem_request += _parse_quantity(requests.get("memory", 0))
+                    cpu_request += _parse_quantity(requests.get("cpu", 0))
 
         # count in max only when there is at least 1 gpu available; the
         # limitation is this guard is only safe if the requested gpu count
         # is not more than 1 (portal parity).
         if int(node.status.capacity["nvidia.com/gpu"]) > gpu_request:
             mem_request_max = math.floor(
-                (parse_quantity(node.status.capacity["memory"]) - mem_request)
+                (_parse_quantity(node.status.capacity["memory"]) - mem_request)
                 / (1024 * 1024 * 1024)
             )
             cpu_request_max = math.floor(
-                parse_quantity(node.status.capacity["cpu"]) - cpu_request
+                _parse_quantity(node.status.capacity["cpu"]) - cpu_request
             )
             gpu["mem_request_max"] = max(gpu["mem_request_max"], mem_request_max)
             gpu["cpu_request_max"] = max(gpu["cpu_request_max"], cpu_request_max)

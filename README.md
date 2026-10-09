@@ -20,13 +20,15 @@ LLM <--MCP/HTTP--> af-jupyterlab-mcp <--k8s API--> notebook namespace (Pod/Servi
               af-mcp-platform credential broker
 ```
 
-This repo ships two groups of tools: six that manage the Pod/Service/
+This repo ships three groups of tools: six that manage the Pod/Service/
 Secret/Ingress quadruple for a notebook, ported from af-portal's
-`portal/jupyterlab.py` and its four Jinja templates, and sixteen `nb_*` tools
-that proxy calls into the Datalayer `jupyter-mcp-server` running inside the
-notebook itself (`4ea435f`), so a session can drive code execution inside the
-user's own notebook without the notebook token ever entering LLM context — see
-[maniaclab/af-mcp-platform#189](https://github.com/maniaclab/af-mcp-platform/issues/189).
+`portal/jupyterlab.py` and its four Jinja templates; seventeen `nb_*` tools that
+proxy calls into the Datalayer `jupyter-mcp-server` running inside the notebook
+itself (`4ea435f`), so a session can drive code execution inside the user's own
+notebook without the notebook token ever entering LLM context — see
+[maniaclab/af-mcp-platform#189](https://github.com/maniaclab/af-mcp-platform/issues/189);
+and 52 `nb_ui_*` tools that drive the user's open JupyterLab tab through the
+`jupyter-mcp-tools` extension.
 <!-- --8<-- [end:architecture] -->
 
 ## Project layout
@@ -51,14 +53,15 @@ src/af_jupyterlab_mcp/
 └── tools/
     ├── _helpers.py        # format_error(), append_next_actions(), format_notebook[_list]()
     ├── jupyterlab.py      # the six CRD-management @mcp.tool() functions
-    └── nb_proxy.py        # the sixteen nb_* jupyter-mcp-server proxy @mcp.tool() functions
+    ├── nb_proxy.py        # the seventeen nb_* jupyter-mcp-server proxy @mcp.tool() functions
+    └── nb_ui.py           # the 52 nb_ui_* JupyterLab frontend-command proxy tools
 ```
 
 <!-- --8<-- [start:tool-surface] -->
 
 ## Tool surface
 
-22 tools total. Every tool's MCP `annotations` declare its
+75 tools total. Every tool's MCP `annotations` declare its
 read-only/mutating/destructive status (see `CLAUDE.md`'s "Tool registration
 pattern"); the column below mirrors that.
 
@@ -101,14 +104,78 @@ returned to the caller).
 | `nb_execute_cell`             | Execute a specific cell in the active notebook          | destructive |
 | `nb_insert_execute_code_cell` | Insert a code cell and immediately execute it           | destructive |
 | `nb_execute_code`             | Execute arbitrary code in the notebook server's kernel  | destructive |
+| `nb_clear_cell_output`        | Clear a code cell's outputs, keeping the cell           | destructive |
 
 The three code-execution tools (`nb_execute_cell`,
 `nb_insert_execute_code_cell`, `nb_execute_code`) are marked destructive even
 though "execute" isn't literally a delete: they can mutate anything the kernel
 can reach, which is what the annotation communicates to a client.
-`nb_get_selected_cell` and `nb_run_all_cells` are intentionally absent — they
-require the `jupyter-mcp-tools` JupyterLab frontend extension, not installed in
-the current notebook images.
+Cell-addressing tools accept either a positional index or the cell's stable
+`cell_id` (given both, the id wins); prefer ids, since an index goes stale as
+soon as a cell is inserted above it.
+
+### JupyterLab UI proxy (`tools/nb_ui.py`, upstream: [jupyter-mcp-tools](https://github.com/datalayer/jupyter-mcp-tools))
+
+Every `nb_ui_*` tool proxies one JupyterLab command through the same
+ownership/readiness/token path as the `nb_*` tools, but the command runs
+**inside the user's open JupyterLab browser tab** (relayed over a websocket by
+the `jupyter-mcp-tools` extension) and acts on the active notebook, console, or
+selection there. With no tab open, the call fails. The notebook image must
+allowlist each command
+([maniaclab/ml_platform#14](https://github.com/maniaclab/ml_platform/issues/14)).
+
+Tool names are `nb_ui_` + the upstream id with `-` → `_` (upstream ids are
+JupyterLab command ids with `:` → `_`, e.g. `notebook:run-all-cells` →
+`notebook_run-all-cells` → `nb_ui_notebook_run_all_cells`). Tools that take
+arguments beyond `notebook_server_id` are noted.
+
+| Area         | Tools (`nb_ui_` prefix omitted)                                                                                                                                                                                                                                                                              | Kind        |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------- |
+| Notebook     | `notebook_get_selected_cell`, `notebook_move_cursor_down`, `notebook_move_cursor_up`, `notebook_extend_marked_cells_below`, `notebook_extend_marked_cells_above`, `notebook_copy_cell`                                                                                                                       | read-only   |
+| Notebook     | `notebook_insert_cell_below`, `notebook_insert_cell_above`, `notebook_paste_cell_below`, `notebook_paste_cell_above`, `notebook_move_cell_up`, `notebook_move_cell_down`, `notebook_split_cell_at_cursor`, `notebook_change_cell_to_code`, `notebook_change_cell_to_markdown`, `notebook_change_cell_to_raw` | mutating    |
+| Notebook     | `notebook_delete_cell`, `notebook_cut_cell`, `notebook_merge_cell_above`, `notebook_merge_cell_below`, `notebook_run_all_cells`, `notebook_run_cell`, `notebook_run_cell_and_select_next`, `notebook_run_cell_and_insert_below`, `notebook_append_execute` (`source`, `cell_type`)                           | destructive |
+| Console      | `console_create` (`path`, `insert_mode`, `activate`)                                                                                                                                                                                                                                                         | mutating    |
+| Console      | `console_clear`, `console_interrupt_kernel`, `console_inject` (`code`, `path`, `activate`)                                                                                                                                                                                                                   | destructive |
+| Documents    | `docmanager_open` (`path`, `factory`), `docmanager_new_untitled` (`content_type`, `path`, `ext`), `docmanager_save`, `docmanager_duplicate`                                                                                                                                                                  | mutating    |
+| File browser | `filebrowser_go_to_path` (`path`), `filebrowser_refresh`, `filebrowser_toggle_hidden_files`                                                                                                                                                                                                                  | read-only   |
+| File browser | `filebrowser_create_new_directory`                                                                                                                                                                                                                                                                           | mutating    |
+| Kernel       | `kernelmenu_reconnect_to_kernel`                                                                                                                                                                                                                                                                             | mutating    |
+| Kernel       | `kernelmenu_interrupt`, `kernelmenu_shutdown`                                                                                                                                                                                                                                                                | destructive |
+| UI           | `application_toggle_left_area`, `application_toggle_right_area`, `application_toggle_presentation_mode`, `apputils_change_theme` (`theme`), `editmenu_open`, `filemenu_open`, `helpmenu_open`                                                                                                                | read-only   |
+| Search       | `documentsearch_start` (`search_text`), `documentsearch_highlightNext`, `documentsearch_highlightPrevious`                                                                                                                                                                                                   | read-only   |
+| Terminal     | `terminal_create_new`, `terminal_refresh`                                                                                                                                                                                                                                                                    | mutating    |
+
+"Read-only" here includes commands that only change view state (cursor,
+selection, layout, search, theme). Commands that execute code are destructive,
+like the `nb_execute_*` tools.
+
+Deliberately **not** proxied (and not allowlisted in the image):
+
+- `filebrowser_upload` / `filebrowser_download` — they open a file picker or
+  save into the human's browser; no bytes ever reach the MCP client.
+- `docmanager_delete` / `docmanager_rename` / `docmanager_save-as`,
+  `kernelmenu_change`, `kernelmenu_restart`, `console_restart-kernel` — they
+  block on a modal dialog that needs a human click. Use `nb_restart_notebook` to
+  restart a kernel without the UI.
+
+### Images with different tool sets
+
+The tool list above is fixed, but the notebook behind a call can run any
+allowlisted image, and older images offer fewer tools (e.g. `ml-platform:2026.3`
+has no jupyter-mcp-server at all; images with jupyter-mcp-server 1.x lack
+`clear_cell_output` and all but two UI commands). The chart value
+`notebook.images.toolOverrides` maps an **exact image string** to the upstream
+jupyter-mcp-server tool ids that image offers (e.g. `read_cell`,
+`notebook_run-all-cells`). Images without an entry are assumed to support every
+tool, matching the latest ml-platform image. Calling a tool a notebook's image
+does not offer returns a clear "not supported by image" error naming the image,
+without contacting the notebook.
+
+On a jupyter-mcp-server 1.x image, the 2.x `cell_id`-style arguments are not
+understood: 1.x silently drops unknown arguments, so passing **both**
+`cell_index` and `cell_id` uses the index (2.x would use the id), and passing
+`cell_id` alone fails upstream because `cell_index` is required there.
+
 <!-- --8<-- [end:tool-surface] -->
 
 ## Build and test commands

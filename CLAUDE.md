@@ -19,12 +19,15 @@ policy layered on top (guardrail validation, dual-writer safety, owner-scoping),
 not a thin pass-through to the Kubernetes API.
 
 Six CRD-management tools create/inspect/delete the pod+service+secret+ingress
-quadruple (`tools/jupyterlab.py`). Sixteen `nb_*` tools (`tools/nb_proxy.py`,
+quadruple (`tools/jupyterlab.py`). Seventeen `nb_*` tools (`tools/nb_proxy.py`,
 tracked in
 [maniaclab/af-mcp-platform#189](https://github.com/maniaclab/af-mcp-platform/issues/189))
 proxy to the Datalayer `jupyter-mcp-server` running inside the notebook itself,
 so a session can drive code execution inside the user's own notebook without the
-notebook token ever entering LLM context.
+notebook token ever entering LLM context. Fifty-two `nb_ui_*` tools
+(`tools/nb_ui.py`) proxy JupyterLab frontend commands served by the
+`jupyter-mcp-tools` extension; these run inside the user's open JupyterLab tab
+and fail without one.
 
 ## Project layout
 
@@ -43,8 +46,8 @@ stale twice (most recently: it didn't mention `k8s/proxy.py`,
 
 Mirrors ami-mcp/af-filesystem-mcp: a `register(mcp: MCPServer) -> None` per
 module (`tools/jupyterlab.py`'s six CRD-management tools, `tools/nb_proxy.py`'s
-16 `nb_*` proxy tools) defines all `@mcp.tool()` closures. `server.py`'s
-`_register_all` calls both.
+17 `nb_*` proxy tools, `tools/nb_ui.py`'s 52 `nb_ui_*` UI tools) defines all
+`@mcp.tool()` closures. `server.py`'s `_register_all` calls all three.
 
 Every tool returns markdown _and_ structured content:
 `CallToolResult(content=[...], structured_content=...)`, with the return
@@ -134,15 +137,20 @@ Key conventions:
   a `CallToolResult(is_error=True)` — never raised, never a bare
   `f"Error: {exc}"` string, and never a plain error `CallToolResult` built by
   hand at a tool's own call site.
-- `tools/nb_proxy.py`'s 16 tools proxy to jupyter-mcp-server, which returns
-  markdown/plain text for every tool, not structured data — there is nothing
-  further to extract without coupling to its undocumented text format, so all 16
-  share one minimal wrapper model, `NbProxyResult({"result": <str>})`, via the
-  shared `_call_upstream` helper. `_get_ready_pod_and_token` and
-  `call_notebook_tool` raise typed exceptions
+- `tools/nb_proxy.py`'s and `tools/nb_ui.py`'s tools proxy to
+  jupyter-mcp-server, which returns markdown/plain text for every tool, not
+  structured data — there is nothing further to extract without coupling to its
+  undocumented text format, so all of them share one minimal wrapper model,
+  `NbProxyResult({"result": <str>})`, via the shared `_call_upstream` helper.
+  `_get_ready_pod_and_token` and `call_notebook_tool` raise typed exceptions
   (`NotFoundOrNotYoursError`/`NotebookNotReadyError`/
   `NotebookToolTransportError`/`NotebookToolUpstreamError`) on failure — never
   return a plain error string a caller has to `isinstance`-sniff.
+- Per-image tool support (`Settings.image_tool_overrides`, chart value
+  `notebook.images.toolOverrides`) is enforced in `_call_upstream` against the
+  pod's actual image, keyed by **upstream** tool id. Images without an override
+  are assumed to support every tool; keep that default meaning "the latest
+  ml-platform image".
 - All `kubernetes` client calls are blocking (the SDK has no asyncio support),
   so every k8s-layer call from a tool goes through `asyncio.to_thread(...)` to
   keep the MCP event loop responsive.
@@ -256,3 +264,25 @@ Two distinct grants, both templated in `charts/af-jupyterlab-mcp/templates/`:
    `TestEveryToolDeclaresAnnotationsAndOutputSchema` tool-count assertion is
    updated to match.
 6. Run `pixi run test` and `pixi run lint` to verify.
+
+### Adding a JupyterLab UI (`nb_ui_*`) tool
+
+1. Confirm the command id exists in the JupyterLab version the notebook image
+   ships (grep the JupyterLab source for `'namespace:command'`) — the upstream
+   jupyter-mcp-tools README lists several ids that do not. Skip commands that
+   act on the human's browser or block on a modal dialog (see `nb_ui.py`'s
+   module docstring).
+2. Allowlist the upstream id (`namespace_command`) in the notebook image's
+   `allowed_jupyter_mcp_tools`
+   ([maniaclab/ml_platform](https://github.com/maniaclab/ml_platform)'s
+   `config/jupyter_notebook_config.py`). Older images that do not offer it need
+   no change -- their `notebook.images.toolOverrides` entry already lists only
+   what they support -- but an override for an image that does offer it must
+   gain the id.
+3. If the command takes no arguments, add a `UiToolSpec` row to `_UI_TOOLS` —
+   the proxy name is derived from the id. Otherwise add a typed wrapper in
+   `nb_ui.register()` with `name=_ui_name(...)`,
+   `description=_description(...)`, and `annotations=_annotations(...)`.
+4. Add the id to the matching bucket (and to `_TYPED` if it takes arguments) in
+   `tests/tools/test_nb_ui.py`, update the tool counts there and in
+   `tests/test_server.py`, and add the row to the README's `nb_ui_*` table.

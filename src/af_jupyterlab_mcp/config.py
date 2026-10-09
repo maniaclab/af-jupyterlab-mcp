@@ -10,8 +10,13 @@ support turning one on via configuration.
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 # Server-side guardrail bounds (issue #189 "Server-side guardrails"). These
 # are validation, not quota, and are ALWAYS enforced regardless of the
@@ -30,6 +35,26 @@ LIMIT_MULTIPLIER = 2
 
 def _split_csv(value: str) -> tuple[str, ...]:
     return tuple(v.strip() for v in value.split(",") if v.strip())
+
+
+def _parse_image_tool_overrides(name: str, raw: str) -> dict[str, frozenset[str]]:
+    """Parse ``{"<image>": ["<upstream tool id>", ...]}`` JSON from env var *name*."""
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        msg = f"{name} is not valid JSON: {exc}"
+        raise ValueError(msg) from exc
+    if not isinstance(data, dict):
+        msg = f"{name} must be a JSON object mapping image -> list of tool ids"
+        # ValueError (not TypeError): every malformed env value is a config error.
+        raise ValueError(msg)  # noqa: TRY004
+    overrides: dict[str, frozenset[str]] = {}
+    for image, tools in data.items():
+        if not isinstance(tools, list) or not all(isinstance(t, str) for t in tools):
+            msg = f"{name}[{image!r}] must be a list of upstream tool id strings"
+            raise ValueError(msg)
+        overrides[image] = frozenset(tools)
+    return overrides
 
 
 def _env_int_or_none(name: str) -> int | None:
@@ -55,6 +80,13 @@ class Settings:
     # allowlist from chart values" -- see issue #189 guardrails).
     cpu_images: tuple[str, ...] = field(default_factory=tuple)
     gpu_images: tuple[str, ...] = field(default_factory=tuple)
+
+    # Per-image tool support, chart-values-driven. Maps an exact image string
+    # to the upstream jupyter-mcp-server tool ids (e.g. ``read_cell``,
+    # ``notebook_run-all-cells``) that image's notebook server offers. Images
+    # without an entry are assumed to support every nb_*/nb_ui_* tool, i.e.
+    # to match the latest ml-platform image; an empty set means none at all.
+    image_tool_overrides: Mapping[str, frozenset[str]] = field(default_factory=dict)
 
     # Optional quota knobs (helm values), OFF by default per decision 4.
     max_servers_per_user: int | None = None
@@ -91,6 +123,10 @@ class Settings:
         max_gpus = _env_int_or_none("JUPYTERLAB_MCP_MAX_GPUS_PER_REQUEST")
         if max_gpus is not None:
             kwargs["max_gpus_per_request"] = max_gpus
+        if overrides := os.environ.get("JUPYTERLAB_MCP_IMAGE_TOOL_OVERRIDES"):
+            kwargs["image_tool_overrides"] = _parse_image_tool_overrides(
+                "JUPYTERLAB_MCP_IMAGE_TOOL_OVERRIDES", overrides
+            )
         if portal_url := os.environ.get("JUPYTERLAB_MCP_PORTAL_URL"):
             kwargs["portal_url"] = portal_url
         return cls(**kwargs)  # type: ignore[arg-type]

@@ -10,14 +10,12 @@ Each tool here mirrors one tool from jupyter-mcp-server
 5. Calls the upstream jupyter-mcp-server tool via ``call_notebook_tool``,
    which injects the token server-side.
 
-Tool signatures are copied from jupyter-mcp-server v1.x source; see
+Tool signatures are copied from jupyter-mcp-server v2.x source; see
 https://github.com/datalayer/jupyter-mcp-server/tree/main/jupyter_mcp_server/tools
 
-Not included: ``notebook_get-selected-cell`` and ``notebook_run-all-cells``.
-These are served by the ``jupyter-mcp-tools`` JupyterLab frontend extension,
-which is not installed in the current notebook images. They will be added here
-once ``jupyter-mcp-tools`` is available in the image (cross-reference:
-maniaclab/ml_platform issue TBD).
+The JupyterLab frontend commands served by the ``jupyter-mcp-tools``
+extension (``notebook_get-selected-cell``, ``notebook_run-all-cells``, ...)
+are proxied separately as ``nb_ui_*`` tools in ``nb_ui.py``.
 """
 
 from __future__ import annotations
@@ -30,7 +28,11 @@ from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import BaseModel
 
 from af_jupyterlab_mcp.auth.broker import get_broker_claims
-from af_jupyterlab_mcp.k8s.errors import NotebookNotReadyError, NotFoundOrNotYoursError
+from af_jupyterlab_mcp.k8s.errors import (
+    NotebookNotReadyError,
+    NotFoundOrNotYoursError,
+    ToolNotSupportedByImageError,
+)
 from af_jupyterlab_mcp.k8s.notebooks import (
     K8sClients,
     _read_pod_or_none,
@@ -110,7 +112,7 @@ async def _call_upstream(
 ) -> CallToolResult:
     """Resolve the notebook pod, forward *tool_name* upstream, and wrap its output.
 
-    Shared by all 16 ``nb_*`` tools: each just builds its own ``tool_args``
+    Shared by all ``nb_*`` tools: each just builds its own ``tool_args``
     dict and delegates here. Every failure mode (not found/not yours, not
     ready, no token, transport error, upstream tool error) is caught here
     and turned into a single ``is_error`` result via ``format_error`` --
@@ -120,7 +122,7 @@ async def _call_upstream(
     wrapped in ``NbProxyResult`` for ``structured_content``.
     """
     try:
-        _pod, token = await _get_ready_pod_and_token(ctx, notebook_server_id)
+        pod, token = await _get_ready_pod_and_token(ctx, notebook_server_id)
     except NotFoundOrNotYoursError as exc:
         return format_error(
             exc, hints=["Use `list_jupyter_servers` to see your own servers."]
@@ -137,6 +139,22 @@ async def _call_upstream(
         return format_error(exc)
 
     _, _, settings = _lifespan(ctx)
+    image = pod.spec.containers[0].image
+    supported = settings.image_tool_overrides.get(image)
+    if supported is not None and tool_name not in supported:
+        msg = (
+            f"Notebook {notebook_server_id!r} runs image {image!r}, which does not "
+            f"offer {tool_name!r} (supported: {', '.join(sorted(supported)) or 'none'})"
+        )
+        return format_error(
+            ToolNotSupportedByImageError(msg),
+            hints=[
+                (
+                    "Use `list_supported_images` and recreate the server on an "
+                    "image that supports this tool."
+                ),
+            ],
+        )
     try:
         text = await call_notebook_tool(
             notebook_url=f"https://{notebook_server_id}.{settings.domain}",
@@ -163,7 +181,7 @@ async def _call_upstream(
 
 
 def register(mcp: MCPServer) -> None:
-    """Register the 16 nb_* proxy tools on *mcp*."""
+    """Register the 17 nb_* proxy tools on *mcp*."""
     # ------------------------------------------------------------------
     # Filesystem
     # ------------------------------------------------------------------
@@ -342,19 +360,24 @@ def register(mcp: MCPServer) -> None:
     )
     async def nb_read_cell(
         notebook_server_id: str,
-        cell_index: int,
+        cell_index: int | None = None,
         include_outputs: bool = True,
         notebook_name: str | None = None,
+        cell_id: str | None = None,
         *,
         ctx: Context[Any, Any],
     ) -> Annotated[CallToolResult, NbProxyResult]:
-        """Read a cell from the active notebook on the notebook server."""
-        args: dict[str, Any] = {
-            "cell_index": cell_index,
-            "include_outputs": include_outputs,
-        }
+        """Read a cell from the active notebook on the notebook server.
+
+        Address the cell by cell_index or cell_id (given both, the id wins).
+        """
+        args: dict[str, Any] = {"include_outputs": include_outputs}
+        if cell_index is not None:
+            args["cell_index"] = cell_index
         if notebook_name is not None:
             args["notebook_name"] = notebook_name
+        if cell_id is not None:
+            args["cell_id"] = cell_id
         return await _call_upstream(ctx, notebook_server_id, "read_cell", args)
 
     # ------------------------------------------------------------------
@@ -395,19 +418,24 @@ def register(mcp: MCPServer) -> None:
     )
     async def nb_overwrite_cell_source(
         notebook_server_id: str,
-        cell_index: int,
         cell_source: str,
+        cell_index: int | None = None,
         notebook_name: str | None = None,
+        cell_id: str | None = None,
         *,
         ctx: Context[Any, Any],
     ) -> Annotated[CallToolResult, NbProxyResult]:
-        """Overwrite the source of a cell in the active notebook."""
-        args: dict[str, Any] = {
-            "cell_index": cell_index,
-            "cell_source": cell_source,
-        }
+        """Overwrite the source of a cell in the active notebook.
+
+        Address the cell by cell_index or cell_id (given both, the id wins).
+        """
+        args: dict[str, Any] = {"cell_source": cell_source}
+        if cell_index is not None:
+            args["cell_index"] = cell_index
         if notebook_name is not None:
             args["notebook_name"] = notebook_name
+        if cell_id is not None:
+            args["cell_id"] = cell_id
         return await _call_upstream(
             ctx, notebook_server_id, "overwrite_cell_source", args
         )
@@ -420,23 +448,30 @@ def register(mcp: MCPServer) -> None:
     )
     async def nb_edit_cell_source(
         notebook_server_id: str,
-        cell_index: int,
         old_string: str,
         new_string: str,
+        cell_index: int | None = None,
         replace_all: bool = False,
         notebook_name: str | None = None,
+        cell_id: str | None = None,
         *,
         ctx: Context[Any, Any],
     ) -> Annotated[CallToolResult, NbProxyResult]:
-        """Edit part of a cell's source in the active notebook."""
+        """Edit part of a cell's source in the active notebook.
+
+        Address the cell by cell_index or cell_id (given both, the id wins).
+        """
         args: dict[str, Any] = {
-            "cell_index": cell_index,
             "old_string": old_string,
             "new_string": new_string,
             "replace_all": replace_all,
         }
+        if cell_index is not None:
+            args["cell_index"] = cell_index
         if notebook_name is not None:
             args["notebook_name"] = notebook_name
+        if cell_id is not None:
+            args["cell_id"] = cell_id
         return await _call_upstream(ctx, notebook_server_id, "edit_cell_source", args)
 
     @mcp.tool(
@@ -448,19 +483,25 @@ def register(mcp: MCPServer) -> None:
     )
     async def nb_delete_cell(
         notebook_server_id: str,
-        cell_indices: list[int],
+        cell_indices: list[int] | None = None,
         include_source: bool = True,
         notebook_name: str | None = None,
+        cell_ids_to_delete: list[str] | None = None,
         *,
         ctx: Context[Any, Any],
     ) -> Annotated[CallToolResult, NbProxyResult]:
-        """Delete one or more cells from the active notebook."""
-        args: dict[str, Any] = {
-            "cell_indices": cell_indices,
-            "include_source": include_source,
-        }
+        """Delete one or more cells from the active notebook.
+
+        Address the cells by cell_indices or cell_ids_to_delete (given both,
+        the ids win; ids are safer since indices shift as earlier cells go).
+        """
+        args: dict[str, Any] = {"include_source": include_source}
+        if cell_indices is not None:
+            args["cell_indices"] = cell_indices
         if notebook_name is not None:
             args["notebook_name"] = notebook_name
+        if cell_ids_to_delete is not None:
+            args["cell_ids_to_delete"] = cell_ids_to_delete
         return await _call_upstream(ctx, notebook_server_id, "delete_cell", args)
 
     @mcp.tool(
@@ -471,19 +512,30 @@ def register(mcp: MCPServer) -> None:
     )
     async def nb_move_cell(
         notebook_server_id: str,
-        source_index: int,
-        target_index: int,
+        source_index: int | None = None,
+        target_index: int | None = None,
         notebook_name: str | None = None,
+        source_cell_id: str | None = None,
+        target_cell_id: str | None = None,
         *,
         ctx: Context[Any, Any],
     ) -> Annotated[CallToolResult, NbProxyResult]:
-        """Move a cell to a different index in the active notebook."""
-        args: dict[str, Any] = {
-            "source_index": source_index,
-            "target_index": target_index,
-        }
+        """Move a cell to a different position in the active notebook.
+
+        Address the source by source_index or source_cell_id, and the
+        destination by target_index or target_cell_id (given both, the id wins).
+        """
+        args: dict[str, Any] = {}
+        if source_index is not None:
+            args["source_index"] = source_index
+        if target_index is not None:
+            args["target_index"] = target_index
         if notebook_name is not None:
             args["notebook_name"] = notebook_name
+        if source_cell_id is not None:
+            args["source_cell_id"] = source_cell_id
+        if target_cell_id is not None:
+            args["target_cell_id"] = target_cell_id
         return await _call_upstream(ctx, notebook_server_id, "move_cell", args)
 
     # ------------------------------------------------------------------
@@ -499,25 +551,56 @@ def register(mcp: MCPServer) -> None:
     )
     async def nb_execute_cell(
         notebook_server_id: str,
-        cell_index: int,
+        cell_index: int | None = None,
         timeout: int = 0,
         stream: bool = True,
         progress_interval: int = 5,
+        cell_id: str | None = None,
         *,
         ctx: Context[Any, Any],
     ) -> Annotated[CallToolResult, NbProxyResult]:
-        """Execute a specific cell in the active notebook."""
-        return await _call_upstream(
-            ctx,
-            notebook_server_id,
-            "execute_cell",
-            {
-                "cell_index": cell_index,
-                "timeout": timeout,
-                "stream": stream,
-                "progress_interval": progress_interval,
-            },
+        """Execute a specific cell in the active notebook.
+
+        Address the cell by cell_index or cell_id (given both, the id wins).
+        """
+        args: dict[str, Any] = {
+            "timeout": timeout,
+            "stream": stream,
+            "progress_interval": progress_interval,
+        }
+        if cell_index is not None:
+            args["cell_index"] = cell_index
+        if cell_id is not None:
+            args["cell_id"] = cell_id
+        return await _call_upstream(ctx, notebook_server_id, "execute_cell", args)
+
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            title="Clear cell output",
+            read_only_hint=False,
+            destructive_hint=True,
         )
+    )
+    async def nb_clear_cell_output(
+        notebook_server_id: str,
+        cell_index: int | None = None,
+        notebook_name: str | None = None,
+        cell_id: str | None = None,
+        *,
+        ctx: Context[Any, Any],
+    ) -> Annotated[CallToolResult, NbProxyResult]:
+        """Clear a code cell's outputs and execution count, keeping the cell.
+
+        Address the cell by cell_index or cell_id (given both, the id wins).
+        """
+        args: dict[str, Any] = {}
+        if cell_index is not None:
+            args["cell_index"] = cell_index
+        if notebook_name is not None:
+            args["notebook_name"] = notebook_name
+        if cell_id is not None:
+            args["cell_id"] = cell_id
+        return await _call_upstream(ctx, notebook_server_id, "clear_cell_output", args)
 
     @mcp.tool(
         annotations=ToolAnnotations(
@@ -585,9 +668,3 @@ def register(mcp: MCPServer) -> None:
         if kernel_id is not None:
             args["kernel_id"] = kernel_id
         return await _call_upstream(ctx, notebook_server_id, "execute_code", args)
-
-    # nb_get_selected_cell and nb_run_all_cells are intentionally absent.
-    # They are served by the ``jupyter-mcp-tools`` JupyterLab frontend extension,
-    # which is not installed in the current notebook images. They will be added
-    # here once ``jupyter-mcp-tools`` is available in the image (cross-reference:
-    # maniaclab/ml_platform issue TBD).

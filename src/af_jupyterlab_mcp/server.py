@@ -14,7 +14,9 @@ from typing import TYPE_CHECKING, Any
 
 import uvicorn
 from kubernetes import client as k8s_client
-from kubernetes import config as k8s_config
+from kubernetes.config.incluster_config import (
+    load_incluster_config as _untyped_load_incluster_config,
+)
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions
 from mcp.server.mcpserver import MCPServer
 from pydantic import AnyHttpUrl
@@ -28,20 +30,27 @@ from af_jupyterlab_mcp.config import Settings
 from af_jupyterlab_mcp.k8s.notebooks import K8sClients
 from af_jupyterlab_mcp.tools import jupyterlab as jupyterlab_tools
 from af_jupyterlab_mcp.tools import nb_proxy as nb_proxy_tools
+from af_jupyterlab_mcp.tools import nb_ui as nb_ui_tools
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncGenerator, Callable
 
     from starlette.applications import Starlette
     from starlette.requests import Request
+
+# kubernetes' load_incluster_config is unannotated; this typed alias lets strict
+# mypy check the call site instead of rejecting it.
+_load_incluster_config: Callable[[], None] = _untyped_load_incluster_config
 
 _INSTRUCTIONS = (
     "MCP server for per-user JupyterLab server management on the ATLAS AF "
     "Kubernetes cluster. Provides tools to create, inspect, and delete your "
     "own JupyterLab server (the same notebooks af-portal deploys), and to "
-    "check GPU availability and the supported image list. Every server is "
-    "scoped to your own broker identity -- there is no way to act on "
-    "another user's server."
+    "check GPU availability and the supported image list. The nb_* tools "
+    "read, edit, and execute notebooks inside a running server; the nb_ui_* "
+    "tools drive the JupyterLab UI and need the user's JupyterLab tab open. "
+    "Every server is scoped to your own broker identity -- there is no way "
+    "to act on another user's server."
 )
 
 
@@ -49,6 +58,7 @@ def _register_all(mcp: MCPServer) -> None:
     """Register every tool module on *mcp*."""
     jupyterlab_tools.register(mcp)
     nb_proxy_tools.register(mcp)
+    nb_ui_tools.register(mcp)
 
 
 def _build_k8s_clients() -> K8sClients:
@@ -59,7 +69,7 @@ def _build_k8s_clients() -> K8sClients:
     RoleBinding into the notebook namespace, plus a read-only ClusterRole
     for GPU-availability parity with the portal.
     """
-    k8s_config.load_incluster_config()
+    _load_incluster_config()
     api_client = k8s_client.ApiClient()
     return K8sClients(
         core_v1=k8s_client.CoreV1Api(api_client),

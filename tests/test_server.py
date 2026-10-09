@@ -12,11 +12,11 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
 import af_credentials.verifier as af_verifier
-import kubernetes.config as k8s_config
 import pytest
 from mcp.server.mcpserver import MCPServer
 from starlette.testclient import TestClient
 
+from af_jupyterlab_mcp import server as server_mod
 from af_jupyterlab_mcp.config import Settings
 from af_jupyterlab_mcp.server import _make_broker_app, _register_all, serve
 
@@ -54,14 +54,14 @@ class TestEveryToolDeclaresAnnotationsAndOutputSchema:
     This is the one test that would catch a future tool being added (or an
     existing one refactored) without following the
     ``Annotated[CallToolResult, Model]`` + ``ToolAnnotations`` pattern all
-    22 tools use today -- see CLAUDE.md's "Tool registration pattern".
+    75 tools use today -- see CLAUDE.md's "Tool registration pattern".
     """
 
     def test_every_tool_declares_annotations_and_output_schema(self) -> None:
         mcp = MCPServer("test")
         _register_all(mcp)
         tools = mcp._tool_manager.list_tools()
-        assert len(tools) == 22, [t.name for t in tools]
+        assert len(tools) == 75, [t.name for t in tools]
         for tool in tools:
             assert tool.annotations is not None, tool.name
             assert tool.annotations.read_only_hint is not None, tool.name
@@ -84,7 +84,7 @@ def broker_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
         return None
 
     monkeypatch.setattr(af_verifier.BrokerTokenVerifier, "verify", fake_verify)
-    monkeypatch.setattr(k8s_config, "load_incluster_config", lambda: None)
+    monkeypatch.setattr(server_mod, "_load_incluster_config", lambda: None)
 
     app = _make_broker_app(
         jwks_url="http://broker.invalid/.well-known/jwks.json",
@@ -181,7 +181,7 @@ class TestToolsOverTheWire:
         )
         assert resp.status_code == 200
         tools = {tool["name"]: tool for tool in resp.json()["result"]["tools"]}
-        assert len(tools) == 22
+        assert len(tools) == 75
         for tool in tools.values():
             assert tool["annotations"]["readOnlyHint"] is not None
             assert tool["outputSchema"] is not None
