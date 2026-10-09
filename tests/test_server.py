@@ -12,11 +12,11 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
 import af_credentials.verifier as af_verifier
-import kubernetes.config as k8s_config
 import pytest
 from mcp.server.mcpserver import MCPServer
 from starlette.testclient import TestClient
 
+from af_jupyterlab_mcp import server as server_mod
 from af_jupyterlab_mcp.config import Settings
 from af_jupyterlab_mcp.server import _make_broker_app, _register_all, serve
 
@@ -84,7 +84,7 @@ def broker_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
         return None
 
     monkeypatch.setattr(af_verifier.BrokerTokenVerifier, "verify", fake_verify)
-    monkeypatch.setattr(k8s_config, "load_incluster_config", lambda: None)
+    monkeypatch.setattr(server_mod, "_load_incluster_config", lambda: None)
 
     app = _make_broker_app(
         jwks_url="http://broker.invalid/.well-known/jwks.json",

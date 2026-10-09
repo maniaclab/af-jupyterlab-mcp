@@ -14,7 +14,9 @@ from typing import TYPE_CHECKING, Any
 
 import uvicorn
 from kubernetes import client as k8s_client
-from kubernetes import config as k8s_config
+from kubernetes.config.incluster_config import (
+    load_incluster_config as _untyped_load_incluster_config,
+)
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions
 from mcp.server.mcpserver import MCPServer
 from pydantic import AnyHttpUrl
@@ -31,10 +33,14 @@ from af_jupyterlab_mcp.tools import nb_proxy as nb_proxy_tools
 from af_jupyterlab_mcp.tools import nb_ui as nb_ui_tools
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncGenerator, Callable
 
     from starlette.applications import Starlette
     from starlette.requests import Request
+
+# kubernetes' load_incluster_config is unannotated; this typed alias lets strict
+# mypy check the call site instead of rejecting it.
+_load_incluster_config: Callable[[], None] = _untyped_load_incluster_config
 
 _INSTRUCTIONS = (
     "MCP server for per-user JupyterLab server management on the ATLAS AF "
@@ -63,7 +69,7 @@ def _build_k8s_clients() -> K8sClients:
     RoleBinding into the notebook namespace, plus a read-only ClusterRole
     for GPU-availability parity with the portal.
     """
-    k8s_config.load_incluster_config()
+    _load_incluster_config()
     api_client = k8s_client.ApiClient()
     return K8sClients(
         core_v1=k8s_client.CoreV1Api(api_client),
