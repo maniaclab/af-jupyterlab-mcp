@@ -28,7 +28,11 @@ from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import BaseModel
 
 from af_jupyterlab_mcp.auth.broker import get_broker_claims
-from af_jupyterlab_mcp.k8s.errors import NotebookNotReadyError, NotFoundOrNotYoursError
+from af_jupyterlab_mcp.k8s.errors import (
+    NotebookNotReadyError,
+    NotFoundOrNotYoursError,
+    ToolNotSupportedByImageError,
+)
 from af_jupyterlab_mcp.k8s.notebooks import (
     K8sClients,
     _read_pod_or_none,
@@ -118,7 +122,7 @@ async def _call_upstream(
     wrapped in ``NbProxyResult`` for ``structured_content``.
     """
     try:
-        _pod, token = await _get_ready_pod_and_token(ctx, notebook_server_id)
+        pod, token = await _get_ready_pod_and_token(ctx, notebook_server_id)
     except NotFoundOrNotYoursError as exc:
         return format_error(
             exc, hints=["Use `list_jupyter_servers` to see your own servers."]
@@ -135,6 +139,22 @@ async def _call_upstream(
         return format_error(exc)
 
     _, _, settings = _lifespan(ctx)
+    image = pod.spec.containers[0].image
+    supported = settings.image_tool_overrides.get(image)
+    if supported is not None and tool_name not in supported:
+        msg = (
+            f"Notebook {notebook_server_id!r} runs image {image!r}, which does not "
+            f"offer {tool_name!r} (supported: {', '.join(sorted(supported)) or 'none'})"
+        )
+        return format_error(
+            ToolNotSupportedByImageError(msg),
+            hints=[
+                (
+                    "Use `list_supported_images` and recreate the server on an "
+                    "image that supports this tool."
+                ),
+            ],
+        )
     try:
         text = await call_notebook_tool(
             notebook_url=f"https://{notebook_server_id}.{settings.domain}",

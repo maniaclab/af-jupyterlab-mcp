@@ -33,3 +33,7 @@ class NotFoundOrNotYoursError(LookupError):
 
 class NotebookNotReadyError(RuntimeError):
     """A notebook pod exists and is owned by the caller, but is not yet Ready."""
+
+
+class ToolNotSupportedByImageError(LookupError):
+    """A notebook's image is configured (per-image tool overrides) not to offer a tool."""

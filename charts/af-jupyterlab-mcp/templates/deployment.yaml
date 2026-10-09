@@ -85,6 +85,10 @@ spec:
             - name: JUPYTERLAB_MCP_GPU_IMAGES
               value: {{ .Values.notebook.images.gpu | join "," | quote }}
             {{- end }}
+            {{- with .Values.notebook.images.toolOverrides }}
+            - name: JUPYTERLAB_MCP_IMAGE_TOOL_OVERRIDES
+              value: {{ toJson . | quote }}
+            {{- end }}
             {{- if .Values.notebook.quotas.maxServersPerUser }}
             - name: JUPYTERLAB_MCP_MAX_SERVERS_PER_USER
               value: {{ .Values.notebook.quotas.maxServersPerUser | quote }}

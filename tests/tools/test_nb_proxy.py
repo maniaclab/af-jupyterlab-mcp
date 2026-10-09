@@ -12,6 +12,7 @@ call_notebook_tool is patched throughout -- no real notebook is contacted.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import TYPE_CHECKING, ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -606,3 +607,68 @@ class TestNbProxyForwardsUpstreamArgs:
         kwargs = mock_call.call_args.kwargs
         assert kwargs["tool_name"] == upstream
         assert kwargs["tool_args"] == expected_args
+
+
+# ---------------------------------------------------------------------------
+# Tests: per-image tool overrides
+# ---------------------------------------------------------------------------
+
+
+class TestImageToolOverrides:
+    """`_call_upstream` refuses tools a notebook's image is configured not to support.
+
+    Images without an override are assumed to support every tool.
+    """
+
+    async def _call(
+        self,
+        settings: Settings,
+        overrides: dict[str, frozenset[str]],
+        tool: str = "nb_list_kernels",
+    ) -> tuple[CallToolResult, AsyncMock]:
+        ctx = await _ready_notebook_ctx(
+            dataclasses.replace(settings, image_tool_overrides=overrides)
+        )
+        mcp = MCPServer("test")
+        nb_proxy_mod.register(mcp)
+        tools = {t.name: t.fn for t in mcp._tool_manager.list_tools()}
+        with patch(
+            "af_jupyterlab_mcp.tools.nb_proxy.call_notebook_tool",
+            new=AsyncMock(return_value="ok"),
+        ) as mock_call:
+            result = await tools[tool](notebook_server_id="alice-notebook-1", ctx=ctx)
+        return result, mock_call
+
+    async def test_image_without_override_forwards(self, settings: Settings) -> None:
+        result, mock_call = await self._call(
+            settings, {"some-other:image": frozenset()}
+        )
+        assert result.is_error is not True
+        mock_call.assert_called_once()
+
+    async def test_override_including_tool_forwards(self, settings: Settings) -> None:
+        result, mock_call = await self._call(
+            settings, {_IMAGE: frozenset({"list_kernels", "read_cell"})}
+        )
+        assert result.is_error is not True
+        mock_call.assert_called_once()
+
+    async def test_override_excluding_tool_is_a_clear_error(
+        self, settings: Settings, tool_text: Callable[[CallToolResult], str]
+    ) -> None:
+        result, mock_call = await self._call(
+            settings, {_IMAGE: frozenset({"read_cell"})}
+        )
+        mock_call.assert_not_called()
+        assert result.is_error is True
+        output = tool_text(result)
+        assert _IMAGE in output
+        assert "list_kernels" in output
+        assert "list_supported_images" in output
+
+    async def test_empty_override_blocks_every_tool(self, settings: Settings) -> None:
+        result, mock_call = await self._call(
+            settings, {_IMAGE: frozenset()}, tool="nb_list_notebooks"
+        )
+        mock_call.assert_not_called()
+        assert result.is_error is True

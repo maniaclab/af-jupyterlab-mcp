@@ -158,6 +158,24 @@ Deliberately **not** proxied (and not allowlisted in the image):
   block on a modal dialog that needs a human click. Use `nb_restart_notebook` to
   restart a kernel without the UI.
 
+### Images with different tool sets
+
+The tool list above is fixed, but the notebook behind a call can run any
+allowlisted image, and older images offer fewer tools (e.g. `ml-platform:2026.3`
+has no jupyter-mcp-server at all; images with jupyter-mcp-server 1.x lack
+`clear_cell_output` and all but two UI commands). The chart value
+`notebook.images.toolOverrides` maps an **exact image string** to the upstream
+jupyter-mcp-server tool ids that image offers (e.g. `read_cell`,
+`notebook_run-all-cells`). Images without an entry are assumed to support every
+tool, matching the latest ml-platform image. Calling a tool a notebook's image
+does not offer returns a clear "not supported by image" error naming the image,
+without contacting the notebook.
+
+On a jupyter-mcp-server 1.x image, the 2.x `cell_id`-style arguments are not
+understood: 1.x silently drops unknown arguments, so passing **both**
+`cell_index` and `cell_id` uses the index (2.x would use the id), and passing
+`cell_id` alone fails upstream because `cell_index` is required there.
+
 <!-- --8<-- [end:tool-surface] -->
 
 ## Build and test commands

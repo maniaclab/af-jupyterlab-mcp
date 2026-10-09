@@ -10,6 +10,7 @@ call_notebook_tool is patched throughout -- no real notebook is contacted.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, patch
 
@@ -19,7 +20,7 @@ from mcp.server.mcpserver import MCPServer
 from af_jupyterlab_mcp.tools import nb_proxy as nb_proxy_mod
 from af_jupyterlab_mcp.tools import nb_ui as nb_ui_mod
 from tests.tools import test_nb_proxy as nb_proxy_tests
-from tests.tools.test_nb_proxy import _make_base_ctx, _ready_notebook_ctx
+from tests.tools.test_nb_proxy import _IMAGE, _make_base_ctx, _ready_notebook_ctx
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -372,3 +373,33 @@ class TestNbUiForwarding:
         mock_call.assert_not_called()
         assert result.is_error is True
         assert "list_jupyter_servers" in tool_text(result)
+
+
+class TestNbUiImageToolOverrides:
+    """An image running jupyter-mcp-server 1.x only offers two frontend tools."""
+
+    _ONE_X_UI = frozenset({"notebook_run-all-cells", "notebook_get-selected-cell"})
+
+    async def test_override_allows_listed_and_blocks_other_ui_tools(
+        self,
+        registered_ui_tools: dict[str, Callable[..., Awaitable[CallToolResult]]],
+        settings: Settings,
+    ) -> None:
+        ctx = await _ready_notebook_ctx(
+            dataclasses.replace(settings, image_tool_overrides={_IMAGE: self._ONE_X_UI})
+        )
+        with patch(
+            "af_jupyterlab_mcp.tools.nb_proxy.call_notebook_tool",
+            new=AsyncMock(return_value="ok"),
+        ) as mock_call:
+            allowed = await registered_ui_tools["nb_ui_notebook_run_all_cells"](
+                notebook_server_id="alice-notebook-1", ctx=ctx
+            )
+            blocked = await registered_ui_tools["nb_ui_docmanager_open"](
+                notebook_server_id="alice-notebook-1", path="a.ipynb", ctx=ctx
+            )
+
+        assert allowed.is_error is not True
+        assert blocked.is_error is True
+        mock_call.assert_called_once()
+        assert mock_call.call_args.kwargs["tool_name"] == "notebook_run-all-cells"

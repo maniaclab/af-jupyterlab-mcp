@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import pytest
 
 from af_jupyterlab_mcp.config import Settings
-
-if TYPE_CHECKING:
-    import pytest
 
 
 class TestPortalUrl:
@@ -31,3 +28,46 @@ class TestPortalUrl:
         monkeypatch.delenv("JUPYTERLAB_MCP_PORTAL_URL", raising=False)
         s = Settings.from_env()
         assert s.portal_url is None
+
+
+class TestImageToolOverrides:
+    _ENV = "JUPYTERLAB_MCP_IMAGE_TOOL_OVERRIDES"
+
+    def test_defaults_to_no_overrides(self) -> None:
+        """No overrides means every image is assumed to support every tool."""
+        assert dict(Settings().image_tool_overrides) == {}
+
+    def test_absent_from_env_gives_no_overrides(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv(self._ENV, raising=False)
+        assert dict(Settings.from_env().image_tool_overrides) == {}
+
+    def test_parses_json_object_into_frozensets(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(
+            self._ENV,
+            '{"img:old": ["read_cell", "notebook_run-all-cells"], "img:ancient": []}',
+        )
+        overrides = Settings.from_env().image_tool_overrides
+        assert overrides == {
+            "img:old": frozenset({"read_cell", "notebook_run-all-cells"}),
+            "img:ancient": frozenset(),
+        }
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            pytest.param("not json", id="bad-json"),
+            pytest.param('["read_cell"]', id="not-an-object"),
+            pytest.param('{"img:old": "read_cell"}', id="value-not-a-list"),
+            pytest.param('{"img:old": ["read_cell", 3]}', id="non-string-id"),
+        ],
+    )
+    def test_malformed_value_raises(
+        self, monkeypatch: pytest.MonkeyPatch, raw: str
+    ) -> None:
+        monkeypatch.setenv(self._ENV, raw)
+        with pytest.raises(ValueError, match=self._ENV):
+            Settings.from_env()

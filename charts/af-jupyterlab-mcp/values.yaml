@@ -60,6 +60,22 @@ notebook:
     gpu:
       - hub.opensciencegrid.org/usatlas/ml-platform-gpu:latest
       - hub.opensciencegrid.org/usatlas/ml-platform:2026.3
+    # Per-image tool support for the nb_*/nb_ui_* proxy tools, keyed by the
+    # exact image string. Images without an entry are assumed to support every
+    # tool (i.e. to match the latest ml-platform image); an entry lists the
+    # upstream jupyter-mcp-server tool ids that image's notebook server offers
+    # (an empty list means none -- calls get a clear "not supported by image"
+    # error instead of a transport failure). Example for an image running
+    # jupyter-mcp-server 1.x with the default jupyter-mcp-tools allowlist:
+    #   hub.opensciencegrid.org/usatlas/ml-platform-cpu:<tag>:
+    #     [list_files, list_kernels, list_notebooks, use_notebook,
+    #      unuse_notebook, restart_notebook, read_notebook, read_cell,
+    #      insert_cell, overwrite_cell_source, edit_cell_source, delete_cell,
+    #      move_cell, execute_cell, insert_execute_code_cell, execute_code,
+    #      notebook_run-all-cells, notebook_get-selected-cell]
+    toolOverrides:
+      # Predates jupyter-mcp-server in the image.
+      hub.opensciencegrid.org/usatlas/ml-platform:2026.3: []
 
   # Optional per-owner quota knobs (decision 4 in af-mcp-platform#189: OFF by
   # default -- no default max-servers-per-user, no default GPU count cap

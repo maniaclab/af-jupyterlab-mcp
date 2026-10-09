@@ -146,6 +146,11 @@ Key conventions:
   (`NotFoundOrNotYoursError`/`NotebookNotReadyError`/
   `NotebookToolTransportError`/`NotebookToolUpstreamError`) on failure — never
   return a plain error string a caller has to `isinstance`-sniff.
+- Per-image tool support (`Settings.image_tool_overrides`, chart value
+  `notebook.images.toolOverrides`) is enforced in `_call_upstream` against the
+  pod's actual image, keyed by **upstream** tool id. Images without an override
+  are assumed to support every tool; keep that default meaning "the latest
+  ml-platform image".
 - All `kubernetes` client calls are blocking (the SDK has no asyncio support),
   so every k8s-layer call from a tool goes through `asyncio.to_thread(...)` to
   keep the MCP event loop responsive.
@@ -270,7 +275,10 @@ Two distinct grants, both templated in `charts/af-jupyterlab-mcp/templates/`:
 2. Allowlist the upstream id (`namespace_command`) in the notebook image's
    `allowed_jupyter_mcp_tools`
    ([maniaclab/ml_platform](https://github.com/maniaclab/ml_platform)'s
-   `config/jupyter_notebook_config.py`).
+   `config/jupyter_notebook_config.py`). Older images that do not offer it need
+   no change -- their `notebook.images.toolOverrides` entry already lists only
+   what they support -- but an override for an image that does offer it must
+   gain the id.
 3. If the command takes no arguments, add a `UiToolSpec` row to `_UI_TOOLS` —
    the proxy name is derived from the id. Otherwise add a typed wrapper in
    `nb_ui.register()` with `name=_ui_name(...)`,
