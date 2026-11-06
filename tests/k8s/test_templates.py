@@ -1,9 +1,10 @@
-"""Tests for the ported Jinja templates and the two deliberate divergences.
+"""Tests for the ported Jinja templates and the three deliberate divergences.
 
-Divergences from af-portal's templates (issue #189):
+Divergences from af-portal's templates (1-2 from issue #189):
   1. add a `created-by: af-jupyterlab-mcp` label
   2. omit `globus-id` (broker JWTs carry no Globus ID -- see issue #189
      open question 2, flagged, not silently resolved, in the final report)
+  3. quote the pod's cpu/gpu resource quantities so they parse as strings
 """
 
 from __future__ import annotations
@@ -98,3 +99,14 @@ class TestRenderManifests:
         env = manifests["pod"]["spec"]["containers"][0]["env"]
         token_env = next(e for e in env if e["name"] == "JUPYTER_TOKEN")
         assert token_env["value"] == "dG9rZW4="
+
+    def test_pod_resource_quantities_render_as_strings(self) -> None:
+        # The kubernetes client validates create_namespaced_pod bodies and
+        # rejects non-string quantities; int template vars must still render
+        # as YAML strings.
+        resources = render_manifests(**_SETTINGS)["pod"]["spec"]["containers"][0][
+            "resources"
+        ]
+        for section in ("limits", "requests"):
+            for name, quantity in resources[section].items():
+                assert isinstance(quantity, str), f"{section}.{name}={quantity!r}"
